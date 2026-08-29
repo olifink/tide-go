@@ -309,7 +309,7 @@ func (m *Model) View() string {
 				Bold(true)
 		} else if isActive {
 			style = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#50FA7B")).
+				Foreground(lipgloss.Color("#74C7EC")).
 				Bold(true)
 		} else if item.IsDir {
 			style = lipgloss.NewStyle().
