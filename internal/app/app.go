@@ -44,8 +44,9 @@ type Model struct {
 	StatusMessage string
 	AIChannel     chan ai.AIChunkMsg
 	pendingAIQ    string
-	activeAIMode  ai.AIMode
-	aiResponse    string
+	activeAIMode     ai.AIMode
+	aiResponse       string
+	ConsoleMaximized bool
 }
 
 // InitialModel initializes the TIDE application model.
@@ -510,6 +511,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case PaneConsole:
 			switch msg.String() {
+			case "m", "M":
+				m.ConsoleMaximized = !m.ConsoleMaximized
+				m.recalculateLayout()
+				if m.ConsoleMaximized {
+					m.StatusMessage = "Console maximized (3/4 height) • Press 'm' to restore"
+				} else {
+					m.StatusMessage = "Console restored to default height"
+				}
+				return m, nil
+
 			case "c":
 				m.Console.Clear()
 				m.StatusMessage = "Console cleared"
@@ -616,8 +627,15 @@ func (m *Model) recalculateLayout() {
 	footerH := 1
 	bodyTotalH := max(4, m.Height-headerH-footerH)
 
-	// Allocate 65-70% to Main Split, remainder (min 6 rows) to Console
-	consoleH := max(6, int(float64(bodyTotalH)*0.28))
+	var consoleH int
+	if m.ConsoleMaximized {
+		consoleH = max(6, int(float64(bodyTotalH)*0.75))
+		if bodyTotalH-consoleH < 4 {
+			consoleH = max(4, bodyTotalH-4)
+		}
+	} else {
+		consoleH = max(6, int(float64(bodyTotalH)*0.28))
+	}
 	mainH := max(4, bodyTotalH-consoleH)
 
 	// Fixed width for file explorer (24-30 chars)
@@ -719,7 +737,16 @@ func (m Model) View() string {
 	headerH := 1
 	footerH := 1
 	bodyTotalH := max(4, m.Height-headerH-footerH)
-	consoleH := max(6, int(float64(bodyTotalH)*0.28))
+
+	var consoleH int
+	if m.ConsoleMaximized {
+		consoleH = max(6, int(float64(bodyTotalH)*0.75))
+		if bodyTotalH-consoleH < 4 {
+			consoleH = max(4, bodyTotalH-4)
+		}
+	} else {
+		consoleH = max(6, int(float64(bodyTotalH)*0.28))
+	}
 	mainH := max(4, bodyTotalH-consoleH)
 
 	sidebarW := min(30, max(20, int(float64(m.Width)*0.22)))
@@ -811,19 +838,27 @@ func (m Model) View() string {
 	consoleBorder := InactiveBorderStyle
 	consoleTitleText := "OUTPUT / CONSOLE"
 	consoleTitleStyle := PanelTitleInactive
+	consoleHint := "m Maximize  ^X Shell  ^G Gemini  c Clear"
+	if m.ConsoleMaximized {
+		consoleHint = "m Restore  ^X Shell  ^G Gemini  c Clear"
+	}
 	if m.Console.IsRunning {
 		consoleTitleText = fmt.Sprintf("CONSOLE [⟳ %s]", m.Console.RunningTitle)
 		consoleTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F9E2AF"))
 	} else if m.ActivePane == PaneConsole {
 		consoleBorder = ActiveBorderStyle
-		consoleTitleText = "OUTPUT / CONSOLE (Active)"
+		if m.ConsoleMaximized {
+			consoleTitleText = "OUTPUT / CONSOLE [Maximized] (Active)"
+		} else {
+			consoleTitleText = "OUTPUT / CONSOLE (Active)"
+		}
 		consoleTitleStyle = PanelTitleActive
 	}
 	consoleBox := RenderTitledBox(
 		consoleBorder,
 		consoleTitleText,
 		consoleTitleStyle,
-		"^X Shell  ^G Gemini  c Clear",
+		consoleHint,
 		m.Console.View(),
 		consoleInnerW,
 		consoleInnerH,

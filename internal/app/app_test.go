@@ -387,3 +387,41 @@ func TestAppFileTreeEnterOnExecutableRunsShell(t *testing.T) {
 		t.Errorf("expected command returned for execution")
 	}
 }
+
+func TestAppConsoleToggleMaximize(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 40
+	m.recalculateLayout()
+
+	// Switch to Console pane
+	m.ActivePane = PaneConsole
+	m.updateFocus()
+
+	defaultConsoleH := m.Console.Height
+
+	// Press 'm' to maximize
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	m = newM.(Model)
+
+	if !m.ConsoleMaximized {
+		t.Errorf("expected ConsoleMaximized to be true after pressing 'm'")
+	}
+	if m.Console.Height <= defaultConsoleH {
+		t.Errorf("expected maximized height (%d) > default height (%d)", m.Console.Height, defaultConsoleH)
+	}
+	if !strings.Contains(m.StatusMessage, "Console maximized") {
+		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+
+	// Press 'm' again to restore
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	m = newM.(Model)
+
+	if m.ConsoleMaximized {
+		t.Errorf("expected ConsoleMaximized to be false after pressing 'm' second time")
+	}
+	if m.Console.Height != defaultConsoleH {
+		t.Errorf("expected restored height (%d) == default height (%d)", m.Console.Height, defaultConsoleH)
+	}
+}
