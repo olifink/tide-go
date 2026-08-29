@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"tide/internal/runner"
 )
@@ -306,5 +307,104 @@ func TestHighlightCodeHorizontalScroll(t *testing.T) {
 	}
 	if !strings.Contains(out10, "abcdefgh") {
 		t.Errorf("expected out10 to contain scrolled content, got: %s", out10)
+	}
+}
+
+func TestNormalizeMakefileTabs(t *testing.T) {
+	spaceMakefile := `CC = gcc
+CFLAGS = -Wall
+
+all: program
+
+program: main.o
+    $(CC) main.o -o program
+
+clean:
+    rm -f *.o program
+`
+	normalized := NormalizeMakefileTabs(spaceMakefile)
+	lines := strings.Split(normalized, "\n")
+
+	// Check line 7 (program recipe) and line 10 (clean recipe) start with \t
+	if !strings.HasPrefix(lines[6], "\t$(CC)") {
+		t.Errorf("expected line 6 to start with tab, got: %q", lines[6])
+	}
+	if !strings.HasPrefix(lines[9], "\trm") {
+		t.Errorf("expected line 9 to start with tab, got: %q", lines[9])
+	}
+}
+
+func TestMakefileTabPreservationInEditor(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-make-edit-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	makePath := filepath.Join(tmpDir, "Makefile")
+	initialContent := "all: program\n\nprogram:\n\tgcc main.c -o program\n"
+	_ = os.WriteFile(makePath, []byte(initialContent), 0644)
+
+	ed := New("monokai", 80, 24)
+	if err := ed.OpenFile(makePath); err != nil {
+		t.Fatalf("failed to open Makefile: %v", err)
+	}
+
+	// Switch to edit mode
+	ed.ToggleMode()
+	if ed.Mode != ModeEdit {
+		t.Fatalf("expected ModeEdit")
+	}
+
+	// In edit mode, add a new recipe line by typing
+	ed.Textarea.SetValue("all: program\n\nprogram:\n    gcc main.c -o program\n\nclean:\n    rm -f program\n")
+
+	// Switch back to view mode (triggers SetText)
+	ed.ToggleMode()
+	if ed.Mode != ModeView {
+		t.Fatalf("expected ModeView")
+	}
+
+	// Save file
+	if err := ed.SaveFile(); err != nil {
+		t.Fatalf("failed to save Makefile: %v", err)
+	}
+
+	// Read from disk
+	savedBytes, err := os.ReadFile(makePath)
+	if err != nil {
+		t.Fatalf("failed to read saved file: %v", err)
+	}
+	savedStr := string(savedBytes)
+
+	if !strings.Contains(savedStr, "\tgcc main.c") {
+		t.Errorf("expected saved file to contain '\\tgcc', got:\n%s", savedStr)
+	}
+	if !strings.Contains(savedStr, "\trm -f") {
+		t.Errorf("expected saved file to contain '\\trm', got:\n%s", savedStr)
+	}
+}
+
+func TestEditorTabKeyInsertsIndentation(t *testing.T) {
+	ed := New("monokai", 80, 24)
+	ed.Buffer.FilePath = "Makefile"
+	ed.Buffer.IsLoaded = true
+	ed.Buffer.Language = "Makefile"
+	ed.Buffer.UsesTabs = true
+	ed.Mode = ModeEdit
+
+	ed.Textarea.SetValue("all:\n")
+	ed.Textarea.CursorDown()
+
+	// Press Tab on recipe line
+	newEd, _ := ed.Update(tea.KeyMsg{Type: tea.KeyTab})
+	ed = newEd
+	ed.Textarea.InsertString("gcc main.c -o all")
+
+	// Toggle mode back to view mode to commit
+	ed.ToggleMode()
+
+	if !strings.Contains(ed.Buffer.CurrentText, "\tgcc") {
+		t.Errorf("expected buffer text to contain '\\tgcc' after Tab key press in Makefile, got: %q", ed.Buffer.CurrentText)
 	}
 }
