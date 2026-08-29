@@ -196,3 +196,41 @@ func TestAppProcessFinishedMsg(t *testing.T) {
 		t.Errorf("expected console entry added")
 	}
 }
+
+func TestAppTabInEditModeInsertsTab(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-tab-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "test.go")
+	_ = os.WriteFile(filePath, []byte("func main() {\n}\n"), 0644)
+
+	m := InitialModel(filePath)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Switch to Edit Mode
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+	m = newM.(Model)
+	if m.Editor.Mode != 1 { // ModeEdit
+		t.Fatalf("expected editor in edit mode")
+	}
+
+	// Press Tab
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+
+	// Pane should remain PaneEditor (NOT switch to PaneConsole)
+	if m.ActivePane != PaneEditor {
+		t.Errorf("expected pane to remain PaneEditor, got %d", m.ActivePane)
+	}
+
+	// Textarea should contain tab or soft-tab indentation
+	val := m.Editor.Textarea.Value()
+	if !strings.Contains(val, "\t") && !strings.Contains(val, "    ") {
+		t.Errorf("expected textarea to contain tab indentation, got: %q", val)
+	}
+}

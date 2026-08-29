@@ -140,6 +140,13 @@ func (m *Model) updateSizes() {
 // Update handles tea.Msg for editor.
 func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.Mode == ModeEdit {
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			if keyMsg.Type == tea.KeyTab || keyMsg.String() == "tab" {
+				m.Textarea.InsertString("\t")
+				m.Buffer.IsModified = (m.Textarea.Value() != m.Buffer.InitialText)
+				return *m, nil
+			}
+		}
 		var cmd tea.Cmd
 		m.Textarea, cmd = m.Textarea.Update(msg)
 		// Check modification

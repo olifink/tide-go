@@ -327,9 +327,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "tab":
-			// If editor is in edit mode, allow typing tabs unless Shift+Tab / Pane cycle
+			// If editor is in edit mode, route Tab directly into the editor to insert character
 			if m.Editor.Mode == editor.ModeEdit && m.ActivePane == PaneEditor {
-				break
+				var edCmd tea.Cmd
+				m.Editor, edCmd = m.Editor.Update(msg)
+				return m, edCmd
 			}
 			m.ActivePane = (m.ActivePane + 1) % 3
 			m.updateFocus()
