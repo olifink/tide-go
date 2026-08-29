@@ -131,6 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Console.AddCommandResult(msg, isBuild)
 		m.Diagnostics = msg.Diagnostics
 		m.Editor.SetDiagnostics(m.Diagnostics)
+		m.refreshWorkspace()
 		if len(msg.Diagnostics) > 0 {
 			m.StatusMessage = fmt.Sprintf("Build finished with %d diagnostic(s)", len(msg.Diagnostics))
 		} else if msg.ExitCode == 0 {
@@ -156,6 +157,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Done {
 			m.Console.IsRunning = false
 			m.StatusMessage = "Gemini finished response"
+			m.refreshWorkspace()
 			return m, nil
 		}
 		m.Console.AddAIChunk(msg.Chunk, false)
@@ -408,6 +410,31 @@ func (m *Model) triggerGeminiAI(userQuery string, apiKey string) tea.Cmd {
 	)
 
 	return ai.ListenForAIChunk(m.AIChannel)
+}
+
+func (m *Model) refreshWorkspace() {
+	// 1. Refresh file explorer sidebar
+	m.FileTree.Refresh()
+
+	// 2. Reload active editor buffer if changed on disk
+	if m.Editor.Buffer.FilePath != "" {
+		reloaded := m.Editor.Reload()
+		if reloaded {
+			m.Editor.SetDiagnostics(m.Diagnostics)
+		}
+	} else if len(m.FileTree.VisibleItems) > 0 && !m.Editor.Buffer.IsLoaded {
+		// If no file was open or previous file was deleted, auto-open first valid text file
+		for _, item := range m.FileTree.VisibleItems {
+			if !item.IsDir {
+				isText, _ := editor.IsTextFile(item.Path)
+				if isText {
+					_ = m.Editor.OpenFile(item.Path)
+					m.FileTree.SelectFile(item.Path)
+					break
+				}
+			}
+		}
+	}
 }
 
 func (m *Model) recalculateLayout() {

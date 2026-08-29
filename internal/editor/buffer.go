@@ -156,6 +156,57 @@ func LoadFile(filePath string) (Buffer, error) {
 	}, nil
 }
 
+// Reload re-reads the file from disk if it hasn't been modified in memory.
+// Returns true if content on disk changed.
+func (b *Buffer) Reload() (bool, error) {
+	if b.FilePath == "" {
+		return false, nil
+	}
+
+	// If modified in memory, preserve user's unsaved changes
+	if b.IsModified {
+		return false, nil
+	}
+
+	stat, err := os.Stat(b.FilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			b.IsLoaded = false
+			b.ErrorMessage = "File was deleted on disk"
+			return true, err
+		}
+		return false, err
+	}
+
+	if isText, checkErr := IsTextFile(b.FilePath); !isText {
+		b.IsLoaded = false
+		b.ErrorMessage = checkErr.Error()
+		b.FileSize = stat.Size()
+		return true, checkErr
+	}
+
+	data, err := os.ReadFile(b.FilePath)
+	if err != nil {
+		return false, err
+	}
+
+	newText := string(data)
+	if newText == b.InitialText {
+		return false, nil // No change
+	}
+
+	lines := strings.Split(newText, "\n")
+	b.InitialText = newText
+	b.CurrentText = newText
+	b.IsModified = false
+	b.LineCount = len(lines)
+	b.Language = DetectLanguage(b.FilePath)
+	b.IsLoaded = true
+	b.FileSize = int64(len(data))
+	b.ErrorMessage = ""
+	return true, nil
+}
+
 // SetText updates current text and recalculates modification status.
 func (b *Buffer) SetText(newText string) {
 	b.CurrentText = newText

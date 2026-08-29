@@ -57,6 +57,43 @@ func TestBufferLoadAndModify(t *testing.T) {
 	}
 }
 
+func TestBufferReload(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-reload-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "reload.go")
+	_ = os.WriteFile(filePath, []byte("package main\n"), 0644)
+
+	ed := New("monokai", 80, 20)
+	if err := ed.OpenFile(filePath); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. External change on disk (e.g. gofmt or shell command)
+	_ = os.WriteFile(filePath, []byte("package main\n\nfunc NewFunc() {}\n"), 0644)
+	changed := ed.Reload()
+	if !changed {
+		t.Errorf("expected ed.Reload() to return true after external modification")
+	}
+	if !strings.Contains(ed.Buffer.CurrentText, "NewFunc") {
+		t.Errorf("expected buffer to contain updated text from disk")
+	}
+
+	// 2. In-memory unsaved edits are protected
+	ed.Buffer.SetText("package main\n// in-memory unsaved")
+	_ = os.WriteFile(filePath, []byte("package main\n// external change"), 0644)
+	changed = ed.Reload()
+	if changed {
+		t.Errorf("ed.Reload() should not overwrite unsaved in-memory edits")
+	}
+	if !strings.Contains(ed.Buffer.CurrentText, "in-memory unsaved") {
+		t.Errorf("unsaved edits should be preserved")
+	}
+}
+
 func TestBinaryFileRejection(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "tide-test-bin-*")
 	if err != nil {

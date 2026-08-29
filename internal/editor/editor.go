@@ -74,6 +74,18 @@ func (m *Model) OpenFile(filePath string) error {
 	return nil
 }
 
+// Reload re-reads the active file from disk if unchanged in memory.
+// Returns true if content was modified on disk and reloaded.
+func (m *Model) Reload() bool {
+	changed, _ := m.Buffer.Reload()
+	if changed && m.Buffer.IsLoaded {
+		if m.Mode == ModeEdit {
+			m.Textarea.SetValue(m.Buffer.CurrentText)
+		}
+	}
+	return changed
+}
+
 // ToggleMode switches between View and Edit modes (only if a valid text file is loaded).
 func (m *Model) ToggleMode() {
 	if !m.Buffer.IsLoaded {
