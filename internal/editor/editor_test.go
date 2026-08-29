@@ -3,6 +3,7 @@ package editor
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"tide/internal/runner"
 )
@@ -53,6 +54,83 @@ func TestBufferLoadAndModify(t *testing.T) {
 	savedData, _ := os.ReadFile(filePath)
 	if string(savedData) != buf.CurrentText {
 		t.Errorf("disk content mismatch")
+	}
+}
+
+func TestBinaryFileRejection(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-bin-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Binary file with null bytes
+	binPath := filepath.Join(tmpDir, "binary.dat")
+	binData := []byte{0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01, 0x02, 0x00, 0x00}
+	if err := os.WriteFile(binPath, binData, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	isText, checkErr := IsTextFile(binPath)
+	if isText || checkErr == nil {
+		t.Errorf("expected binary file to be rejected")
+	}
+
+	buf, err := LoadFile(binPath)
+	if err == nil || buf.IsLoaded {
+		t.Errorf("expected LoadFile on binary file to fail")
+	}
+	if !strings.Contains(buf.ErrorMessage, "binary") {
+		t.Errorf("expected binary error message, got: %s", buf.ErrorMessage)
+	}
+}
+
+func TestBinaryExtensionRejection(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-ext-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	imgFile := filepath.Join(tmpDir, "photo.png")
+	_ = os.WriteFile(imgFile, []byte("fake-png-data"), 0644)
+
+	isText, checkErr := IsTextFile(imgFile)
+	if isText || checkErr == nil {
+		t.Errorf("expected .png extension to be rejected")
+	}
+}
+
+func TestLargeFileRejection(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-large-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// File larger than MaxAutoOpenFileSize (2MB + 1KB)
+	largeFile := filepath.Join(tmpDir, "huge.txt")
+	f, err := os.Create(largeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := []byte(strings.Repeat("a", 1024))
+	for i := 0; i < 2050; i++ { // ~2.05 MB
+		_, _ = f.Write(chunk)
+	}
+	f.Close()
+
+	isText, checkErr := IsTextFile(largeFile)
+	if isText || checkErr == nil {
+		t.Errorf("expected large file >2MB to be rejected")
+	}
+	if !strings.Contains(checkErr.Error(), "too large") {
+		t.Errorf("expected 'too large' error, got: %v", checkErr)
+	}
+
+	buf, _ := LoadFile(largeFile)
+	if buf.IsLoaded {
+		t.Errorf("expected buffer not to be loaded for large file")
 	}
 }
 

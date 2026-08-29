@@ -58,12 +58,14 @@ func New(theme string, width, height int) Model {
 	return m
 }
 
-// OpenFile loads a file into the editor.
+// OpenFile loads a file into the editor with sanity checks.
 func (m *Model) OpenFile(filePath string) error {
 	buf, err := LoadFile(filePath)
 	m.Buffer = buf
 	m.ScrollLine = 0
 	if err != nil {
+		m.Mode = ModeView
+		m.Textarea.SetValue("")
 		return err
 	}
 
@@ -72,8 +74,12 @@ func (m *Model) OpenFile(filePath string) error {
 	return nil
 }
 
-// ToggleMode switches between View and Edit modes.
+// ToggleMode switches between View and Edit modes (only if a valid text file is loaded).
 func (m *Model) ToggleMode() {
+	if !m.Buffer.IsLoaded {
+		return
+	}
+
 	if m.Mode == ModeView {
 		m.Mode = ModeEdit
 		m.Textarea.SetValue(m.Buffer.CurrentText)
@@ -96,6 +102,9 @@ func (m *Model) SetDiagnostics(allDiags []runner.Diagnostic) {
 
 // SaveFile saves current buffer to disk.
 func (m *Model) SaveFile() error {
+	if !m.Buffer.IsLoaded {
+		return nil
+	}
 	if m.Mode == ModeEdit {
 		m.Buffer.SetText(m.Textarea.Value())
 	}
@@ -166,10 +175,13 @@ func (m *Model) View() string {
 	if !m.Buffer.IsLoaded {
 		var blankLines []string
 		if m.Buffer.ErrorMessage != "" {
-			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Padding(1, 1)
-			rendered := errStyle.Render(fmt.Sprintf("Error opening file:\n%s", m.Buffer.ErrorMessage))
-			errLines := strings.Split(rendered, "\n")
-			blankLines = append(blankLines, errLines...)
+			warnBox := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FF5555")).
+				Padding(1, 2)
+
+			msg := fmt.Sprintf("⚠️  Cannot preview file (%s):\n\n%s\n\n- Press ^F to select a text file\n- Press ^N to create a new file", m.Buffer.FileName(), m.Buffer.ErrorMessage)
+			rendered := warnBox.Render(msg)
+			blankLines = append(blankLines, strings.Split(rendered, "\n")...)
 		} else {
 			welcomeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Padding(1, 1)
 			welcomeText := "Welcome to TIDE\n\n- Select a file from sidebar (^F)\n- Press ^N to create a new file\n- Press ^R to run or build\n- Press ^G to ask Gemini"
@@ -182,6 +194,11 @@ func (m *Model) View() string {
 		}
 		if len(blankLines) > m.Height {
 			blankLines = blankLines[:m.Height]
+		}
+		for i, line := range blankLines {
+			if m.Width > 0 && ansi.StringWidth(line) > m.Width {
+				blankLines[i] = ansi.Truncate(line, m.Width, "")
+			}
 		}
 		return strings.Join(blankLines, "\n")
 	}

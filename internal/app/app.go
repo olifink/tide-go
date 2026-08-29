@@ -82,14 +82,19 @@ func InitialModel(startPath string) Model {
 	if initialFile != "" {
 		_ = m.Editor.OpenFile(initialFile)
 		m.FileTree.SelectFile(initialFile)
-		m.ActivePane = PaneEditor
+		if m.Editor.Buffer.IsLoaded {
+			m.ActivePane = PaneEditor
+		}
 	} else if len(ft.VisibleItems) > 0 {
-		// Auto-open first file if available
+		// Auto-open first valid text file within size limits if available
 		for _, item := range ft.VisibleItems {
 			if !item.IsDir {
-				_ = m.Editor.OpenFile(item.Path)
-				m.FileTree.SelectFile(item.Path)
-				break
+				isText, _ := editor.IsTextFile(item.Path)
+				if isText {
+					_ = m.Editor.OpenFile(item.Path)
+					m.FileTree.SelectFile(item.Path)
+					break
+				}
 			}
 		}
 	}
