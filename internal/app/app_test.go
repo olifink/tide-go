@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,6 +26,66 @@ func TestAppInitialModel(t *testing.T) {
 	}
 	if m.Editor.Buffer.FileName() != "main.go" {
 		t.Errorf("expected main.go loaded, got %s", m.Editor.Buffer.FileName())
+	}
+}
+
+func TestAppInitialModelWithNonExistentFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-newfile-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	newFilePath := filepath.Join(tmpDir, "src", "sub", "app.c")
+
+	// Pass non-existent file path
+	m := InitialModel(newFilePath)
+
+	// Directory should be parent directory (src/sub)
+	expectedDir := filepath.Dir(newFilePath)
+	if m.WorkingDir != expectedDir {
+		t.Errorf("expected working dir %s, got %s", expectedDir, m.WorkingDir)
+	}
+
+	// File should be created on disk
+	if _, err := os.Stat(newFilePath); os.IsNotExist(err) {
+		t.Errorf("file %s should have been created on disk", newFilePath)
+	}
+
+	// Editor should have file opened and loaded
+	if m.Editor.Buffer.FileName() != "app.c" {
+		t.Errorf("expected editor to open app.c, got %s", m.Editor.Buffer.FileName())
+	}
+	if !m.Editor.Buffer.IsLoaded {
+		t.Errorf("expected buffer to be loaded")
+	}
+	if m.ActivePane != PaneEditor {
+		t.Errorf("expected PaneEditor active, got %d", m.ActivePane)
+	}
+	if !strings.Contains(m.StatusMessage, "Created & opened app.c") {
+		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+}
+
+func TestAppInitialModelWithExistingFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-existfile-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	existingFile := filepath.Join(tmpDir, "server.go")
+	_ = os.WriteFile(existingFile, []byte("package main\n"), 0644)
+
+	m := InitialModel(existingFile)
+	if m.WorkingDir != tmpDir {
+		t.Errorf("expected working dir %s, got %s", tmpDir, m.WorkingDir)
+	}
+	if m.Editor.Buffer.FileName() != "server.go" {
+		t.Errorf("expected server.go loaded, got %s", m.Editor.Buffer.FileName())
+	}
+	if m.ActivePane != PaneEditor {
+		t.Errorf("expected PaneEditor active for existing file")
 	}
 }
 

@@ -50,33 +50,55 @@ type Model struct {
 func InitialModel(startPath string) Model {
 	cfg := config.Load()
 
-	absDir, err := filepath.Abs(startPath)
+	absPath, err := filepath.Abs(startPath)
 	if err != nil {
-		absDir = "."
+		absPath = "."
 	}
 
-	initialFile := ""
-	// If starting path is a file, set working dir to its directory
-	stat, err := os.Stat(absDir)
-	if err == nil && !stat.IsDir() {
-		initialFile = absDir
-		absDir = filepath.Dir(absDir)
+	var workingDir string
+	var initialFile string
+	var statusMsg string
+
+	stat, err := os.Stat(absPath)
+	if err == nil {
+		// Path exists
+		if stat.IsDir() {
+			workingDir = absPath
+		} else {
+			initialFile = absPath
+			workingDir = filepath.Dir(absPath)
+		}
+	} else {
+		// Path does not exist on disk
+		if strings.HasSuffix(startPath, "/") || strings.HasSuffix(startPath, string(filepath.Separator)) {
+			_ = os.MkdirAll(absPath, 0755)
+			workingDir = absPath
+		} else {
+			// Treat as a file to be created in its target directory
+			targetDir := filepath.Dir(absPath)
+			_ = os.MkdirAll(targetDir, 0755)
+			_ = os.WriteFile(absPath, []byte(""), 0644)
+			initialFile = absPath
+			workingDir = targetDir
+			statusMsg = fmt.Sprintf("Created & opened %s", filepath.Base(absPath))
+		}
 	}
 
-	ft := filetree.New(absDir, 26, 20)
+	ft := filetree.New(workingDir, 26, 20)
 	ed := editor.New(cfg.ChromaTheme, 60, 20)
 	con := console.New(80, 8)
 	mod := modal.New()
 
 	m := Model{
-		Config:     cfg,
-		WorkingDir: absDir,
-		ActivePane: PaneFiles,
-		FileTree:   ft,
-		Editor:     ed,
-		Console:    con,
-		Modal:      mod,
-		Keys:       DefaultKeyMap(),
+		Config:        cfg,
+		WorkingDir:    workingDir,
+		ActivePane:    PaneFiles,
+		FileTree:      ft,
+		Editor:        ed,
+		Console:       con,
+		Modal:         mod,
+		Keys:          DefaultKeyMap(),
+		StatusMessage: statusMsg,
 	}
 
 	if initialFile != "" {
