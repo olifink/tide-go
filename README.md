@@ -57,21 +57,37 @@ TIDE adapts Gemini AI prompts dynamically based on your active panel:
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Installation & Quick Start
 
-### Installation & Build
+### Quick Install (Linux & macOS)
+
+Install the latest pre-compiled binary directly to `~/.local/bin/tide`:
 
 ```bash
-# Clone and build
-git clone <repo-url> tide
-cd tide
+curl -fsSL https://raw.githubusercontent.com/olifink/tide-go/main/install.sh | bash
+```
+
+> **Custom directory:** Pass `BINDIR=/usr/local/bin` (e.g. `curl -fsSL ... | BINDIR=/usr/local/bin bash`).
+
+### Build from Source
+
+```bash
+git clone https://github.com/olifink/tide-go.git
+cd tide-go
 go build -o tide ./cmd/tide
+```
 
-# Run in current directory
-./tide
+### Usage
 
-# Or open a specific file/directory
-./tide main.go
+```bash
+# Open IDE in current directory
+tide
+
+# Open a specific file (auto-creates if non-existent)
+tide main.go
+
+# Open a specific directory
+tide ./my-project
 ```
 
 ### Configuring Gemini AI Assistant
