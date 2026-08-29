@@ -105,7 +105,12 @@ func BuildPrompt(mode AIMode, userQuery string, activeFile string, codeContent s
 		sb.WriteString(fmt.Sprintf("1. LANGUAGE ENFORCEMENT: The file is %s (%s). All code MUST be written strictly in valid %s syntax. Do NOT switch to Python or any other programming language.\n", filepath.Base(activeFile), langName, langName))
 		sb.WriteString(fmt.Sprintf("2. Return the COMPLETE, UPDATED %s file content in a single ```%s markdown code block.\n", langName, langTag))
 		sb.WriteString("3. Do NOT use ellipses (...), truncated functions, or placeholders. Output the full file ready to be saved.\n")
-		sb.WriteString("4. Provide a brief explanation of the changes before or after the code block.\n")
+		if langName == "Makefile" {
+			sb.WriteString("4. MAKEFILE INDENTATION: All recipe / command lines MUST be indented with real TAB ('\\t') characters, not spaces.\n")
+			sb.WriteString("5. Provide a brief explanation of the changes before or after the code block.\n")
+		} else {
+			sb.WriteString("4. Provide a brief explanation of the changes before or after the code block.\n")
+		}
 
 	case ModeGenerateFile:
 		sb.WriteString("You are an expert software developer embedded in the TIDE terminal IDE.\n")
@@ -121,7 +126,7 @@ func BuildPrompt(mode AIMode, userQuery string, activeFile string, codeContent s
 		sb.WriteString("1. On the first line, specify the recommended filename in this exact format: `FILENAME: filename.ext`\n")
 		sb.WriteString("2. Match the language and file extension to the request and project ecosystem (e.g. use .go for Go projects, .c/.h for C projects).\n")
 		sb.WriteString("3. Output the COMPLETE new file code inside a single markdown code block with the appropriate language tag.\n")
-		sb.WriteString("4. Ensure the code is complete, valid, and fully implemented without placeholders or pseudocode.\n")
+		sb.WriteString("4. Ensure the code is complete, valid, and fully implemented without placeholders or pseudocode. If generating a Makefile, use true TAB ('\\t') characters for recipes.\n")
 
 	default: // ModeConsoleQA
 		sb.WriteString("You are an expert software developer and debugging assistant inside the TIDE terminal IDE.\n\n")
@@ -163,6 +168,18 @@ func ExtractCodeAndFile(response string, defaultFilename string) (filename strin
 		code = strings.TrimSpace(match[1])
 		code = strings.ReplaceAll(code, "\r\n", "\n")
 		code = strings.ReplaceAll(code, "\r", "\n")
+
+		if strings.EqualFold(filepath.Base(filename), "Makefile") || strings.HasSuffix(filename, ".mk") {
+			// Convert leading 4 spaces on non-comment, non-target recipe lines to tabs
+			lines := strings.Split(code, "\n")
+			for i, l := range lines {
+				if strings.HasPrefix(l, "    ") && !strings.HasPrefix(l, "\t") {
+					lines[i] = "\t" + strings.TrimPrefix(l, "    ")
+				}
+			}
+			code = strings.Join(lines, "\n")
+		}
+
 		// Explanation is everything outside the code block
 		explanation = strings.TrimSpace(codeBlockRegex.ReplaceAllString(response, ""))
 		if explanation != "" {
