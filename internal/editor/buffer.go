@@ -141,7 +141,8 @@ func LoadFile(filePath string) (Buffer, error) {
 		}, err
 	}
 
-	text := string(data)
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
 	lines := strings.Split(text, "\n")
 
 	return Buffer{
@@ -190,7 +191,8 @@ func (b *Buffer) Reload() (bool, error) {
 		return false, err
 	}
 
-	newText := string(data)
+	newText := strings.ReplaceAll(string(data), "\r\n", "\n")
+	newText = strings.ReplaceAll(newText, "\r", "\n")
 	if newText == b.InitialText {
 		return false, nil // No change
 	}
@@ -209,6 +211,8 @@ func (b *Buffer) Reload() (bool, error) {
 
 // SetText updates current text and recalculates modification status.
 func (b *Buffer) SetText(newText string) {
+	newText = strings.ReplaceAll(newText, "\r\n", "\n")
+	newText = strings.ReplaceAll(newText, "\r", "\n")
 	b.CurrentText = newText
 	b.IsModified = (b.CurrentText != b.InitialText)
 	lines := strings.Split(newText, "\n")

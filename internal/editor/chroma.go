@@ -46,8 +46,10 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 		style = styles.Fallback
 	}
 
-	// 3. Tokenize content into lines (normalize tabs to 4 spaces)
-	normalizedContent := strings.ReplaceAll(content, "\t", "    ")
+	// 3. Normalize line endings (\r\n -> \n, \r -> \n) and tabs
+	normalizedContent := strings.ReplaceAll(content, "\r\n", "\n")
+	normalizedContent = strings.ReplaceAll(normalizedContent, "\r", "\n")
+	normalizedContent = strings.ReplaceAll(normalizedContent, "\t", "    ")
 	lines := strings.Split(normalizedContent, "\n")
 	totalLines := len(lines)
 
@@ -86,7 +88,7 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 
 	for i := startLine; i < endLine; i++ {
 		lineNum := i + 1
-		lineContent := lines[i]
+		lineContent := strings.TrimRight(lines[i], "\r\n")
 
 		// Check for compiler diagnostics on this line
 		diags := diagnostics[lineNum]
@@ -124,6 +126,10 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 				highlightedContent = lineContent
 			}
 		}
+
+		// Strip any trailing carriage returns or newlines from formatter
+		highlightedContent = strings.ReplaceAll(highlightedContent, "\r", "")
+		highlightedContent = strings.ReplaceAll(highlightedContent, "\n", "")
 
 		// Format gutter
 		var gutter string

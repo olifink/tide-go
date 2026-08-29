@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 	"tide/internal/runner"
 )
 
@@ -216,6 +218,51 @@ func TestDetectLanguage(t *testing.T) {
 		got := DetectLanguage(tt.file)
 		if got != tt.want {
 			t.Errorf("DetectLanguage(%s) = %s, want %s", tt.file, got, tt.want)
+		}
+	}
+}
+
+func TestHighlightCodeMakefileNoEmptyLines(t *testing.T) {
+	makeContent := `CC = gcc
+CFLAGS = -Wall -Wextra
+
+all: program
+
+program: main.o
+	$(CC) main.o -o program
+
+clean:
+	rm -f *.o program
+`
+	inputLines := strings.Split(strings.TrimRight(makeContent, "\n"), "\n")
+	output := HighlightCode("Makefile", makeContent, "monokai", nil, 0, len(inputLines), 80)
+	outLines := strings.Split(output, "\n")
+
+	if len(outLines) != len(inputLines) {
+		t.Errorf("expected %d output lines, got %d", len(inputLines), len(outLines))
+	}
+
+	// Verify line 1 contains CC = gcc and line 2 contains CFLAGS
+	if !strings.Contains(ansi.Strip(outLines[0]), "CC = gcc") {
+		t.Errorf("line 1 mismatch: %s", outLines[0])
+	}
+	if !strings.Contains(ansi.Strip(outLines[1]), "CFLAGS = -Wall") {
+		t.Errorf("line 2 mismatch: %s", outLines[1])
+	}
+}
+
+func TestHighlightCodeCRLFHandling(t *testing.T) {
+	crlfContent := "package main\r\n\r\nfunc main() {\r\n}\r\n"
+	output := HighlightCode("main.go", crlfContent, "monokai", nil, 0, 4, 80)
+	outLines := strings.Split(output, "\n")
+
+	if len(outLines) != 4 {
+		t.Errorf("expected 4 output lines, got %d", len(outLines))
+	}
+
+	for i, l := range outLines {
+		if strings.Contains(l, "\r") {
+			t.Errorf("line %d contains carriage return: %q", i+1, l)
 		}
 	}
 }

@@ -161,6 +161,8 @@ func ExtractCodeAndFile(response string, defaultFilename string) (filename strin
 	// Extract code block
 	if match := codeBlockRegex.FindStringSubmatch(response); match != nil {
 		code = strings.TrimSpace(match[1])
+		code = strings.ReplaceAll(code, "\r\n", "\n")
+		code = strings.ReplaceAll(code, "\r", "\n")
 		// Explanation is everything outside the code block
 		explanation = strings.TrimSpace(codeBlockRegex.ReplaceAllString(response, ""))
 		if explanation != "" {
@@ -171,7 +173,10 @@ func ExtractCodeAndFile(response string, defaultFilename string) (filename strin
 	}
 
 	// If no code block fence found, return response as code if it has lines
-	return filename, strings.TrimSpace(response), ""
+	rawCode := strings.TrimSpace(response)
+	rawCode = strings.ReplaceAll(rawCode, "\r\n", "\n")
+	rawCode = strings.ReplaceAll(rawCode, "\r", "\n")
+	return filename, rawCode, ""
 }
 
 // AskGeminiStream sends a prompt to Gemini and streams chunks back via a Bubble Tea channel.
