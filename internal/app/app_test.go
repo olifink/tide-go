@@ -579,3 +579,35 @@ func TestAppEditorPressEEntersEditMode(t *testing.T) {
 		t.Errorf("expected ModeEdit after pressing 'e', got %d", m.Editor.Mode)
 	}
 }
+
+func TestAppFileListAltBackspaceOpensShellRm(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-alt-backspace-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	fileToDelete := filepath.Join(tmpDir, "obsolete.txt")
+	_ = os.WriteFile(fileToDelete, []byte("temp content"), 0644)
+
+	m := InitialModel(tmpDir)
+	m.Width = 100
+	m.Height = 30
+	m.ActivePane = PaneFiles
+	m.FileTree.SelectFile(fileToDelete)
+	m.updateFocus()
+
+	// Press Alt+Backspace in Files pane
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyBackspace, Alt: true})
+	m = newM.(Model)
+
+	if !m.Modal.Active {
+		t.Fatalf("expected Modal to be active after Alt+Backspace")
+	}
+	if m.Modal.Type != modal.ShellCommand {
+		t.Errorf("expected ModalType ShellCommand, got %v", m.Modal.Type)
+	}
+	if !strings.Contains(m.Modal.Value(), "rm -f obsolete.txt") {
+		t.Errorf("expected modal input to contain 'rm -f obsolete.txt', got %q", m.Modal.Value())
+	}
+}

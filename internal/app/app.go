@@ -562,6 +562,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.StatusMessage = "Hiding hidden files (. to toggle)"
 				}
 				return m, nil
+			case "alt+backspace", "alt+delete", "alt+ctrl+h":
+				if item := m.FileTree.SelectedItem(); item != nil && item.Path != "" {
+					relPath, err := filepath.Rel(m.WorkingDir, item.Path)
+					if err != nil || relPath == "" {
+						relPath = item.Path
+					}
+					var rmCmd string
+					if item.IsDir {
+						rmCmd = fmt.Sprintf("rm -rf %s", quotePath(relPath))
+					} else {
+						rmCmd = fmt.Sprintf("rm -f %s", quotePath(relPath))
+					}
+					m.Modal.OpenShellCommand(rmCmd)
+					m.updateFocus()
+				}
+				return m, nil
 			case "r":
 				m.FileTree.Refresh()
 				m.StatusMessage = "File list refreshed"
@@ -751,6 +767,13 @@ func (m *Model) ToggleEditorFullscreen() {
 	} else {
 		m.StatusMessage = "Restored standard multi-pane layout"
 	}
+}
+
+func quotePath(path string) string {
+	if strings.ContainsAny(path, " \t'\"$()[]{}*?~`!&;<>|^#\\") {
+		return fmt.Sprintf("%q", path)
+	}
+	return path
 }
 
 // RenderTitledBox renders a bordered box with the title embedded directly on the top border line.
