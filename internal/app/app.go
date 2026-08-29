@@ -45,7 +45,7 @@ type Model struct {
 	AIChannel     chan ai.AIChunkMsg
 	pendingAIQ    string
 	activeAIMode  ai.AIMode
-	aiResponse    strings.Builder
+	aiResponse    string
 }
 
 // InitialModel initializes the TIDE application model.
@@ -183,7 +183,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if msg.Done {
 			m.Console.IsRunning = false
-			rawResp := m.aiResponse.String()
+			rawResp := m.aiResponse
 
 			switch msg.Mode {
 			case ai.ModeUpdateFile:
@@ -241,7 +241,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		m.aiResponse.WriteString(msg.Chunk)
+		m.aiResponse += msg.Chunk
 		m.Console.AddAIChunk(msg.Chunk, false)
 		return m, ai.ListenForAIChunk(m.AIChannel)
 
@@ -516,7 +516,7 @@ func (m *Model) triggerGeminiAI(userQuery string, apiKey string, mode ai.AIMode)
 	m.updateFocus()
 	m.Console.IsRunning = true
 	m.activeAIMode = mode
-	m.aiResponse.Reset()
+	m.aiResponse = ""
 
 	var fileList []string
 	for _, item := range m.FileTree.VisibleItems {
