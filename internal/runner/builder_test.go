@@ -14,10 +14,10 @@ func TestDetectBuildTargetGo(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// Create go.mod
 	_ = os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test"), 0644)
-	_ = os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644)
 
-	target := DetectBuildTarget(tmpDir, filepath.Join(tmpDir, "main.go"))
+	target := DetectBuildTarget(tmpDir, "")
 	if target.Type != ProjectGo {
 		t.Errorf("expected ProjectGo, got %s", target.Type)
 	}
@@ -33,6 +33,7 @@ func TestDetectBuildTargetMakefile(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// Create Makefile
 	_ = os.WriteFile(filepath.Join(tmpDir, "Makefile"), []byte("all:\n\techo hi"), 0644)
 
 	target := DetectBuildTarget(tmpDir, "")
@@ -51,10 +52,10 @@ func TestDetectBuildTargetC(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	mainC := filepath.Join(tmpDir, "main.c")
-	_ = os.WriteFile(mainC, []byte("int main() { return 0; }"), 0644)
+	cFile := filepath.Join(tmpDir, "main.c")
+	_ = os.WriteFile(cFile, []byte("int main() { return 0; }"), 0644)
 
-	target := DetectBuildTarget(tmpDir, mainC)
+	target := DetectBuildTarget(tmpDir, cFile)
 	if target.Type != ProjectC {
 		t.Errorf("expected ProjectC, got %s", target.Type)
 	}
@@ -121,19 +122,39 @@ func TestDetectRunTarget(t *testing.T) {
 	}
 
 	// 5. Rust with Cargo.toml -> cargo run
-	_ = os.WriteFile(filepath.Join(tmpDir, "Cargo.toml"), []byte("[package]"), 0644)
-	rsFile := filepath.Join(tmpDir, "main.rs")
+	cargoDir := filepath.Join(tmpDir, "cargo_proj")
+	_ = os.Mkdir(cargoDir, 0755)
+	_ = os.WriteFile(filepath.Join(cargoDir, "Cargo.toml"), []byte("[package]"), 0644)
+	rsFile := filepath.Join(cargoDir, "main.rs")
 	_ = os.WriteFile(rsFile, []byte("fn main(){}"), 0644)
-	rtRs := DetectRunTarget(tmpDir, rsFile)
+	rtRs := DetectRunTarget(cargoDir, rsFile)
 	if rtRs.Command != "cargo run" {
 		t.Errorf("expected 'cargo run' for Cargo project, got: %s", rtRs.Command)
 	}
 
-	// 6. Executable binary
-	binFile := filepath.Join(tmpDir, "mytool")
+	// 6. Executable binary in directory that also has a Makefile
+	makeDir := filepath.Join(tmpDir, "make_proj")
+	_ = os.Mkdir(makeDir, 0755)
+	makeFile := filepath.Join(makeDir, "Makefile")
+	_ = os.WriteFile(makeFile, []byte("all:\n\techo all\nrun:\n\techo run\n"), 0644)
+	binFile := filepath.Join(makeDir, "mytool")
 	_ = os.WriteFile(binFile, []byte("ELF binary"), 0755)
-	rtBin := DetectRunTarget(tmpDir, binFile)
+
+	// When executable is selected, it must run the executable (NOT make run)
+	rtBin := DetectRunTarget(makeDir, binFile)
 	if rtBin.Command != "./mytool" {
-		t.Errorf("expected './mytool' for binary, got: %s", rtBin.Command)
+		t.Errorf("expected './mytool' when binary selected even with Makefile present, got: %s", rtBin.Command)
+	}
+
+	// When Makefile is explicitly selected, run make run
+	rtMakeSelected := DetectRunTarget(makeDir, makeFile)
+	if rtMakeSelected.Command != "make run" {
+		t.Errorf("expected 'make run' when Makefile is selected, got: %s", rtMakeSelected.Command)
+	}
+
+	// When NO file is selected, fallback to make run
+	rtNoFile := DetectRunTarget(makeDir, "")
+	if rtNoFile.Command != "make run" {
+		t.Errorf("expected 'make run' as fallback when no file selected, got: %s", rtNoFile.Command)
 	}
 }

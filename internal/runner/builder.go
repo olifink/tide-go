@@ -157,7 +157,27 @@ func DetectRunTarget(dir string, activeFile string) RunTarget {
 		ext := strings.ToLower(filepath.Ext(activeFile))
 		base := filepath.Base(activeFile)
 
-		// 1. Script files: run source directly with interpreter
+		// 1. If active file is already an executable binary on disk (has execute permissions)
+		if info, err := os.Stat(activeFile); err == nil && !info.IsDir() && info.Mode().Perm()&0111 != 0 {
+			cmd := slashRelPath
+			if !strings.HasPrefix(cmd, ".") && !filepath.IsAbs(cmd) {
+				cmd = "./" + cmd
+			}
+			return RunTarget{
+				Command:     cmd,
+				Description: "Run executable (" + cmd + ")",
+			}
+		}
+
+		// 2. If active file is explicitly a Makefile
+		if strings.EqualFold(base, "Makefile") || strings.HasSuffix(base, ".mk") {
+			return RunTarget{
+				Command:     "make run",
+				Description: "Make run (make run)",
+			}
+		}
+
+		// 3. Script files: run source directly with interpreter
 		switch ext {
 		case ".py":
 			return RunTarget{
@@ -186,7 +206,7 @@ func DetectRunTarget(dir string, activeFile string) RunTarget {
 			}
 		}
 
-		// 2. Rust file
+		// 4. Rust file
 		if ext == ".rs" {
 			if fileExists(filepath.Join(dir, "Cargo.toml")) {
 				return RunTarget{
@@ -208,7 +228,7 @@ func DetectRunTarget(dir string, activeFile string) RunTarget {
 			}
 		}
 
-		// 3. Compiled source files (C, C++, Go): strip extension to run resulting binary
+		// 5. Compiled source files (C, C++, Go): strip extension to run resulting binary
 		if ext == ".go" || ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
 			strippedName := base[:len(base)-len(ext)]
 			relDir := filepath.Dir(slashRelPath)
@@ -223,20 +243,6 @@ func DetectRunTarget(dir string, activeFile string) RunTarget {
 			return RunTarget{
 				Command:     binCmd,
 				Description: "Run binary (" + binCmd + ")",
-			}
-		}
-
-		// 4. Already executable binary
-		if info, err := os.Stat(activeFile); err == nil && !info.IsDir() {
-			if info.Mode().Perm()&0111 != 0 {
-				cmd := slashRelPath
-				if !strings.HasPrefix(cmd, ".") && !filepath.IsAbs(cmd) {
-					cmd = "./" + cmd
-				}
-				return RunTarget{
-					Command:     cmd,
-					Description: "Run executable (" + cmd + ")",
-				}
 			}
 		}
 	}

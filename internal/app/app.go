@@ -374,7 +374,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Editor.Mode == editor.ModeEdit {
 				m.Editor.ToggleMode()
 			}
-			target := runner.DetectBuildTarget(m.WorkingDir, m.Editor.Buffer.FilePath)
+			targetFile := m.Editor.Buffer.FilePath
+			if m.ActivePane == PaneFiles && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			} else if targetFile == "" && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			}
+			target := runner.DetectBuildTarget(m.WorkingDir, targetFile)
 			cmdToRun := target.Command
 			if cmdToRun == "" {
 				cmdToRun = "go build ."
@@ -390,7 +396,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Editor.Mode == editor.ModeEdit {
 				m.Editor.ToggleMode()
 			}
-			target := runner.DetectRunTarget(m.WorkingDir, m.Editor.Buffer.FilePath)
+			targetFile := m.Editor.Buffer.FilePath
+			if m.ActivePane == PaneFiles && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			} else if targetFile == "" && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			}
+			target := runner.DetectRunTarget(m.WorkingDir, targetFile)
 			cmdToRun := target.Command
 			if cmdToRun == "" {
 				cmdToRun = "./main"
