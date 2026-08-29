@@ -494,24 +494,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.FileTree.End()
 				return m, nil
 			case "enter":
-				selectedPath, isFile, isExec := m.FileTree.ToggleCurrent()
+				selectedPath, isFile, _ := m.FileTree.ToggleCurrent()
 				if isFile && selectedPath != "" {
-					if isExec {
-						// Executable file: run in shell via console
-						relPath, err := filepath.Rel(m.WorkingDir, selectedPath)
-						cmdToRun := relPath
-						if err != nil || (!strings.HasPrefix(cmdToRun, ".") && !filepath.IsAbs(cmdToRun)) {
-							cmdToRun = "./" + relPath
-						}
-						m.ActivePane = PaneConsole
-						m.updateFocus()
-						m.Console.IsRunning = true
-						m.Console.RunningTitle = cmdToRun
-						m.StatusMessage = fmt.Sprintf("Running: %s", cmdToRun)
-						return m, runner.RunCommandCmd(m.WorkingDir, cmdToRun)
-					}
-
-					// Regular file: open in editor
 					_ = m.Editor.OpenFile(selectedPath)
 					m.Editor.SetDiagnostics(m.Diagnostics)
 					m.FileTree.SelectFile(selectedPath)

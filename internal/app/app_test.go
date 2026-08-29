@@ -364,8 +364,8 @@ func TestAppGeminiGenerateFile(t *testing.T) {
 	}
 }
 
-func TestAppFileTreeEnterOnExecutableRunsShell(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "tide-test-run-exec-*")
+func TestAppFileTreeEnterOpensInEditor(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-open-exec-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,27 +379,21 @@ func TestAppFileTreeEnterOnExecutableRunsShell(t *testing.T) {
 	m.Height = 30
 	m.recalculateLayout()
 
-	// Switch to Files pane and select the executable
+	// Switch to Files pane and select the file
 	m.ActivePane = PaneFiles
 	m.FileTree.SelectFile(execPath)
 	m.updateFocus()
 
-	// Press Enter on the executable item
-	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// Press Enter on the item
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = newM.(Model)
 
-	// Should switch active pane to Console and start running
-	if m.ActivePane != PaneConsole {
-		t.Errorf("expected active pane to switch to PaneConsole, got %d", m.ActivePane)
+	// Should switch active pane to Editor and load file
+	if m.ActivePane != PaneEditor {
+		t.Errorf("expected active pane to switch to PaneEditor, got %d", m.ActivePane)
 	}
-	if !m.Console.IsRunning {
-		t.Errorf("expected console to be running")
-	}
-	if !strings.Contains(m.Console.RunningTitle, "myscript.sh") {
-		t.Errorf("expected running title to contain myscript.sh, got: %s", m.Console.RunningTitle)
-	}
-	if cmd == nil {
-		t.Errorf("expected command returned for execution")
+	if m.Editor.Buffer.FileName() != "myscript.sh" {
+		t.Errorf("expected editor to open myscript.sh, got: %s", m.Editor.Buffer.FileName())
 	}
 }
 
