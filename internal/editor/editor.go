@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -41,6 +42,14 @@ func New(theme string, width, height int) Model {
 	ta.Prompt = ""
 	ta.CharLimit = 0 // unlimited
 
+	// Word and line movement shortcuts
+	ta.KeyMap.WordBackward = key.NewBinding(key.WithKeys("alt+left", "alt+b", "ctrl+left"), key.WithHelp("alt+left", "word backward"))
+	ta.KeyMap.WordForward = key.NewBinding(key.WithKeys("alt+right", "alt+f", "ctrl+right"), key.WithHelp("alt+right", "word forward"))
+	ta.KeyMap.LineStart = key.NewBinding(key.WithKeys("home", "ctrl+a"), key.WithHelp("home", "line start"))
+	ta.KeyMap.LineEnd = key.NewBinding(key.WithKeys("end"), key.WithHelp("end", "line end"))
+	ta.KeyMap.InputBegin = key.NewBinding(key.WithKeys("ctrl+home", "alt+<", "alt+home"), key.WithHelp("ctrl+home", "top of file"))
+	ta.KeyMap.InputEnd = key.NewBinding(key.WithKeys("ctrl+end", "alt+>", "alt+end"), key.WithHelp("ctrl+end", "bottom of file"))
+
 	// Custom styling for textarea
 	ta.FocusedStyle.CursorLine = lipgloss.NewStyle().Background(lipgloss.Color("#282A36"))
 	ta.FocusedStyle.LineNumber = lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4"))
@@ -62,6 +71,17 @@ func New(theme string, width, height int) Model {
 	return m
 }
 
+// setCursorToLine moves the textarea cursor to column 0 of targetLine.
+func (m *Model) setCursorToLine(targetLine int) {
+	for m.Textarea.Line() > 0 {
+		m.Textarea.CursorUp()
+	}
+	for m.Textarea.Line() < targetLine && m.Textarea.Line() < m.Textarea.LineCount()-1 {
+		m.Textarea.CursorDown()
+	}
+	m.Textarea.SetCursor(0)
+}
+
 // OpenFile loads a file into the editor with sanity checks.
 func (m *Model) OpenFile(filePath string) error {
 	buf, err := LoadFile(filePath)
@@ -75,7 +95,7 @@ func (m *Model) OpenFile(filePath string) error {
 	}
 
 	m.Textarea.SetValue(buf.CurrentText)
-	m.Textarea.CursorStart()
+	m.setCursorToLine(0)
 	return nil
 }
 
@@ -86,6 +106,7 @@ func (m *Model) Reload() bool {
 	if changed && m.Buffer.IsLoaded {
 		if m.Mode == ModeEdit {
 			m.Textarea.SetValue(m.Buffer.CurrentText)
+			m.setCursorToLine(m.ScrollLine)
 		}
 	}
 	return changed
@@ -100,9 +121,11 @@ func (m *Model) ToggleMode() {
 	if m.Mode == ModeView {
 		m.Mode = ModeEdit
 		m.Textarea.SetValue(m.Buffer.CurrentText)
+		m.setCursorToLine(m.ScrollLine)
 		m.Textarea.Focus()
 	} else {
 		m.Mode = ModeView
+		m.ScrollLine = max(0, m.Textarea.Line())
 		m.Buffer.SetText(m.Textarea.Value())
 		m.Textarea.Blur()
 	}
@@ -154,9 +177,46 @@ func (m *Model) updateSizes() {
 func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.Mode == ModeEdit {
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			if keyMsg.Type == tea.KeyTab || keyMsg.String() == "tab" {
-				m.Textarea.InsertString("\t")
+			switch keyMsg.String() {
+			case "tab":
+				m.Textarea.InsertString("    ")
 				m.Buffer.IsModified = (m.Textarea.Value() != m.Buffer.InitialText)
+				return *m, nil
+
+			case "pgup":
+				lines := max(1, m.Height/2)
+				for i := 0; i < lines && m.Textarea.Line() > 0; i++ {
+					m.Textarea.CursorUp()
+				}
+				return *m, nil
+
+			case "pgdown":
+				lines := max(1, m.Height/2)
+				for i := 0; i < lines && m.Textarea.Line() < m.Textarea.LineCount()-1; i++ {
+					m.Textarea.CursorDown()
+				}
+				return *m, nil
+
+			case "home", "ctrl+a":
+				m.Textarea.SetCursor(0)
+				return *m, nil
+
+			case "end":
+				m.Textarea.CursorEnd()
+				return *m, nil
+
+			case "ctrl+home", "alt+<", "alt+home":
+				for m.Textarea.Line() > 0 {
+					m.Textarea.CursorUp()
+				}
+				m.Textarea.SetCursor(0)
+				return *m, nil
+
+			case "ctrl+end", "alt+>", "alt+end":
+				for m.Textarea.Line() < m.Textarea.LineCount()-1 {
+					m.Textarea.CursorDown()
+				}
+				m.Textarea.CursorEnd()
 				return *m, nil
 			}
 		}

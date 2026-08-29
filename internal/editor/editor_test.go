@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -406,5 +407,96 @@ func TestEditorTabKeyInsertsIndentation(t *testing.T) {
 
 	if !strings.Contains(ed.Buffer.CurrentText, "\tgcc") {
 		t.Errorf("expected buffer text to contain '\\tgcc' after Tab key press in Makefile, got: %q", ed.Buffer.CurrentText)
+	}
+}
+
+func TestEditorCursorPositionOnEnteringEditMode(t *testing.T) {
+	ed := New("monokai", 80, 24)
+	lines := make([]string, 50)
+	for i := 0; i < 50; i++ {
+		lines[i] = fmt.Sprintf("line %d: hello world", i+1)
+	}
+	content := strings.Join(lines, "\n")
+	ed.Buffer.CurrentText = content
+	ed.Buffer.InitialText = content
+	ed.Buffer.IsLoaded = true
+	ed.Buffer.LineCount = 50
+
+	// View mode is scrolled to line 20
+	ed.ScrollLine = 20
+	ed.Mode = ModeView
+
+	// Toggle to Edit mode
+	ed.ToggleMode()
+
+	if ed.Mode != ModeEdit {
+		t.Fatalf("expected ModeEdit")
+	}
+	if ed.Textarea.Line() != 20 {
+		t.Errorf("expected cursor on line 20, got line %d", ed.Textarea.Line())
+	}
+
+	// Move cursor down 5 lines in edit mode
+	for i := 0; i < 5; i++ {
+		ed.Textarea.CursorDown()
+	}
+	if ed.Textarea.Line() != 25 {
+		t.Errorf("expected cursor on line 25, got %d", ed.Textarea.Line())
+	}
+
+	// Toggle back to View mode
+	ed.ToggleMode()
+	if ed.Mode != ModeView {
+		t.Fatalf("expected ModeView")
+	}
+	if ed.ScrollLine != 25 {
+		t.Errorf("expected ScrollLine 25 in View mode, got %d", ed.ScrollLine)
+	}
+}
+
+func TestEditorEditModeNavigationKeys(t *testing.T) {
+	ed := New("monokai", 80, 24)
+	lines := make([]string, 100)
+	for i := 0; i < 100; i++ {
+		lines[i] = fmt.Sprintf("line %d: some text content here", i+1)
+	}
+	content := strings.Join(lines, "\n")
+	ed.Buffer.CurrentText = content
+	ed.Buffer.InitialText = content
+	ed.Buffer.IsLoaded = true
+	ed.Buffer.LineCount = 100
+	ed.ScrollLine = 0
+	ed.ToggleMode() // enters edit mode at line 0
+
+	if ed.Textarea.Line() != 0 {
+		t.Errorf("expected initial line 0, got %d", ed.Textarea.Line())
+	}
+
+	// Test Page Down
+	newEd, _ := ed.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	ed = newEd
+	if ed.Textarea.Line() <= 0 {
+		t.Errorf("expected line > 0 after pgdown, got %d", ed.Textarea.Line())
+	}
+
+	// Test Ctrl+End (to end of file)
+	newEd, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlEnd})
+	ed = newEd
+	if ed.Textarea.Line() != 99 {
+		t.Errorf("expected line 99 after ctrl+end, got %d", ed.Textarea.Line())
+	}
+
+	// Test Page Up
+	newEd, _ = ed.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	ed = newEd
+	if ed.Textarea.Line() >= 99 {
+		t.Errorf("expected line < 99 after pgup, got %d", ed.Textarea.Line())
+	}
+
+	// Test Ctrl+Home (to top of file)
+	newEd, _ = ed.Update(tea.KeyMsg{Type: tea.KeyCtrlHome})
+	ed = newEd
+	if ed.Textarea.Line() != 0 {
+		t.Errorf("expected line 0 after ctrl+home, got %d", ed.Textarea.Line())
 	}
 }
