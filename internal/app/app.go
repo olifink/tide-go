@@ -301,7 +301,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			// If editor is in edit mode, allow typing tabs unless Shift+Tab / Pane cycle
 			if m.Editor.Mode == editor.ModeEdit && m.ActivePane == PaneEditor {
-				// pass tab to editor
 				break
 			}
 			m.ActivePane = (m.ActivePane + 1) % 3
@@ -437,16 +436,81 @@ func (m *Model) recalculateLayout() {
 	consoleInnerW := max(10, m.Width-2)
 	consoleInnerH := max(1, consoleH-2)
 
-	// Inside sidebarBox: 1 row is for title, so filetree gets (sidebarInnerH - 1)
-	m.FileTree.SetSize(sidebarInnerW, max(1, sidebarInnerH-1))
-
-	// Inside editorBox: 1 row is for title, so editor gets (editorInnerH - 1)
-	m.Editor.SetSize(editorInnerW, max(1, editorInnerH-1))
-
-	// Inside consoleBox: console gets consoleInnerH
+	// Now that titles are on top borders, components get the full inner height!
+	m.FileTree.SetSize(sidebarInnerW, sidebarInnerH)
+	m.Editor.SetSize(editorInnerW, editorInnerH)
 	m.Console.SetSize(consoleInnerW, consoleInnerH)
-
 	m.Modal.SetSize(m.Width, m.Height)
+}
+
+// RenderTitledBox renders a bordered box with the title embedded directly on the top border line.
+func RenderTitledBox(borderStyle lipgloss.Style, title string, titleStyle lipgloss.Style, rightHint string, content string, innerWidth int, innerHeight int) string {
+	box := borderStyle.
+		Width(innerWidth).
+		Height(innerHeight).
+		Render(content)
+
+	lines := strings.Split(box, "\n")
+	if len(lines) == 0 {
+		return box
+	}
+
+	totalOuterWidth := innerWidth + 2
+	borderColor := borderStyle.GetBorderTopForeground()
+	borderSt := lipgloss.NewStyle().Foreground(borderColor)
+
+	topLeft := borderSt.Render("╭")
+	topRight := borderSt.Render("╮")
+	topDash := borderSt.Render("─")
+
+	if title == "" && rightHint == "" {
+		lines[0] = topLeft + borderSt.Render(strings.Repeat("─", innerWidth)) + topRight
+		return strings.Join(lines, "\n")
+	}
+
+	formattedTitle := ""
+	titleWidth := 0
+	if title != "" {
+		formattedTitle = " " + title + " "
+		titleWidth = ansi.StringWidth(formattedTitle)
+	}
+
+	formattedHint := ""
+	hintWidth := 0
+	if rightHint != "" {
+		formattedHint = " " + rightHint + " "
+		hintWidth = ansi.StringWidth(formattedHint)
+	}
+
+	// Truncate title if total exceeds width
+	maxTitleWidth := max(4, totalOuterWidth-6-hintWidth)
+	if titleWidth > maxTitleWidth && maxTitleWidth > 0 {
+		formattedTitle = " " + ansi.Truncate(title, maxTitleWidth-2, "...") + " "
+		titleWidth = ansi.StringWidth(formattedTitle)
+	}
+
+	renderedTitle := ""
+	if formattedTitle != "" {
+		renderedTitle = titleStyle.Render(formattedTitle)
+	}
+
+	renderedHint := ""
+	if formattedHint != "" {
+		renderedHint = lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render(formattedHint)
+	}
+
+	remWidth := totalOuterWidth - 2 - 1 - titleWidth - hintWidth
+	if remWidth < 0 {
+		remWidth = 0
+	}
+
+	topLine := topLeft + topDash + renderedTitle + borderSt.Render(strings.Repeat("─", remWidth)) + renderedHint + topRight
+	if ansi.StringWidth(topLine) > totalOuterWidth {
+		topLine = ansi.Truncate(topLine, totalOuterWidth, "")
+	}
+
+	lines[0] = topLine
+	return strings.Join(lines, "\n")
 }
 
 // View renders the complete TIDE interface.
@@ -503,46 +567,70 @@ func (m Model) View() string {
 		Background(ColorBg).
 		Render(headerLeft)
 
-	// 2. File Sidebar Box (inner height = sidebarInnerH, outer height = mainH)
+	// 2. File Sidebar Box with Border-Embedded Title
 	sidebarBorder := InactiveBorderStyle
-	sidebarTitle := PanelTitleInactive.Render("── FILES ──")
+	sidebarTitleText := "FILES"
+	sidebarTitleStyle := PanelTitleInactive
 	if m.ActivePane == PaneFiles {
 		sidebarBorder = ActiveBorderStyle
-		sidebarTitle = PanelTitleActive.Render("── FILES [Active] ──")
+		sidebarTitleText = "FILES [Active]"
+		sidebarTitleStyle = PanelTitleActive
 	}
-	sidebarTitle = ansi.Truncate(sidebarTitle, sidebarInnerW, "")
-	sidebarContent := sidebarTitle + "\n" + m.FileTree.View()
-	sidebarBox := sidebarBorder.
-		Width(sidebarInnerW).
-		Height(sidebarInnerH).
-		Render(sidebarContent)
+	sidebarBox := RenderTitledBox(
+		sidebarBorder,
+		sidebarTitleText,
+		sidebarTitleStyle,
+		"",
+		m.FileTree.View(),
+		sidebarInnerW,
+		sidebarInnerH,
+	)
 
-	// 3. Editor Box (inner height = editorInnerH, outer height = mainH)
+	// 3. Editor Box with Border-Embedded Title
 	editorBorder := InactiveBorderStyle
-	editorTitleStr := fmt.Sprintf("── %s [%s] ──", fileName, m.Editor.Buffer.Language)
-	editorTitle := PanelTitleInactive.Render(editorTitleStr)
+	editorTitleText := fmt.Sprintf("%s [%s]", fileName, m.Editor.Buffer.Language)
+	editorTitleStyle := PanelTitleInactive
 	if m.ActivePane == PaneEditor {
 		editorBorder = ActiveBorderStyle
-		editorTitle = PanelTitleActive.Render(fmt.Sprintf("── %s [%s] (Active) ──", fileName, m.Editor.Buffer.Language))
+		editorTitleText = fmt.Sprintf("%s [%s] (Active)", fileName, m.Editor.Buffer.Language)
+		editorTitleStyle = PanelTitleActive
 	}
-	editorTitle = ansi.Truncate(editorTitle, editorInnerW, "")
-	editorContent := editorTitle + "\n" + m.Editor.View()
-	editorBox := editorBorder.
-		Width(editorInnerW).
-		Height(editorInnerH).
-		Render(editorContent)
+	if m.Editor.Buffer.IsModified {
+		editorTitleText += " [MOD]"
+	}
+	editorBox := RenderTitledBox(
+		editorBorder,
+		editorTitleText,
+		editorTitleStyle,
+		"",
+		m.Editor.View(),
+		editorInnerW,
+		editorInnerH,
+	)
 
 	mainSplit := lipgloss.JoinHorizontal(lipgloss.Top, sidebarBox, editorBox)
 
-	// 4. Console Box (inner height = consoleInnerH, outer height = consoleH)
+	// 4. Console Box with Border-Embedded Title & Shortcuts Hint
 	consoleBorder := InactiveBorderStyle
-	if m.ActivePane == PaneConsole {
+	consoleTitleText := "OUTPUT / CONSOLE"
+	consoleTitleStyle := PanelTitleInactive
+	if m.Console.IsRunning {
+		consoleTitleText = fmt.Sprintf("CONSOLE [⟳ %s]", m.Console.RunningTitle)
+		consoleTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F9E2AF"))
+	} else if m.ActivePane == PaneConsole {
 		consoleBorder = ActiveBorderStyle
+		consoleTitleText = "OUTPUT / CONSOLE (Active)"
+		consoleTitleStyle = PanelTitleActive
 	}
-	consoleBox := consoleBorder.
-		Width(consoleInnerW).
-		Height(consoleInnerH).
-		Render(m.Console.View())
+	consoleBox := RenderTitledBox(
+		consoleBorder,
+		consoleTitleText,
+		consoleTitleStyle,
+		"^X Shell  ^G Gemini  c Clear",
+		m.Console.View(),
+		consoleInnerW,
+		consoleInnerH,
+	)
 
 	// 5. Pico Footer Bar (exactly 1 line)
 	keys := []struct {

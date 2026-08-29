@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"tide/internal/runner"
 )
 
@@ -49,7 +50,7 @@ type Model struct {
 
 // New creates a new console model.
 func New(width, height int) Model {
-	vp := viewport.New(width, max(1, height-1))
+	vp := viewport.New(width, max(1, height))
 	vp.SetContent("Console ready. Press ^R to build, ^X for shell command, ^G for Gemini AI.")
 
 	rend, _ := glamour.NewTermRenderer(
@@ -69,7 +70,7 @@ func New(width, height int) Model {
 func (m *Model) SetSize(width, height int) {
 	m.Width = width
 	m.Height = height
-	vpHeight := max(1, height-1)
+	vpHeight := max(1, height)
 	m.Viewport.Width = width
 	m.Viewport.Height = vpHeight
 
@@ -209,23 +210,20 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return *m, cmd
 }
 
-// View renders the console pane.
+// View renders the console pane content.
 func (m *Model) View() string {
-	statusStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#44475A")).
-		Foreground(lipgloss.Color("#F8F8F2")).
-		Bold(true)
-
-	var statusText string
-	if m.IsRunning {
-		spinner := "⟳"
-		statusText = statusStyle.Render(fmt.Sprintf(" %s RUNNING: %s ", spinner, m.RunningTitle))
-	} else {
-		statusText = statusStyle.Render(" OUTPUT / CONSOLE ")
+	content := m.Viewport.View()
+	lines := strings.Split(content, "\n")
+	for len(lines) < m.Height {
+		lines = append(lines, "")
 	}
-
-	helpHint := lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render(" ^X Shell  ^G Gemini  c Clear")
-	titleBar := lipgloss.JoinHorizontal(lipgloss.Top, statusText, " ", helpHint)
-
-	return titleBar + "\n" + m.Viewport.View()
+	if len(lines) > m.Height {
+		lines = lines[:m.Height]
+	}
+	for i, line := range lines {
+		if m.Width > 0 && ansi.StringWidth(line) > m.Width {
+			lines[i] = ansi.Truncate(line, m.Width, "")
+		}
+	}
+	return strings.Join(lines, "\n")
 }
