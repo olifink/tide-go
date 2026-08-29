@@ -535,6 +535,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.updateFocus()
 				}
 				return m, nil
+			case "e", "E":
+				selectedPath, isFile, _ := m.FileTree.ToggleCurrent()
+				if isFile && selectedPath != "" {
+					_ = m.Editor.OpenFile(selectedPath)
+					m.Editor.SetDiagnostics(m.Diagnostics)
+					m.FileTree.SelectFile(selectedPath)
+					m.ActivePane = PaneEditor
+					if m.Editor.Mode != editor.ModeEdit {
+						m.Editor.ToggleMode()
+					}
+					m.updateFocus()
+				} else if m.Editor.Buffer.IsLoaded {
+					m.ActivePane = PaneEditor
+					if m.Editor.Mode != editor.ModeEdit {
+						m.Editor.ToggleMode()
+					}
+					m.updateFocus()
+				}
+				return m, nil
 			case ".":
 				m.FileTree.ToggleHidden()
 				if m.FileTree.ShowHidden {
@@ -553,6 +572,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.Editor.Mode == editor.ModeView {
 				if msg.String() == "z" || msg.String() == "Z" {
 					m.ToggleEditorFullscreen()
+					return m, nil
+				}
+				if msg.String() == "e" || msg.String() == "E" {
+					m.Editor.ToggleMode()
 					return m, nil
 				}
 			}

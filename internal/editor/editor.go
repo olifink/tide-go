@@ -170,6 +170,8 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// In View Mode, handle scrolling and word-wrap toggle
 	if keyMsg, ok := msg.(tea.KeyMsg); ok && m.Focused {
 		switch keyMsg.String() {
+		case "e", "E":
+			m.ToggleMode()
 		case "w", "W":
 			m.ToggleWordWrap()
 		case "up", "k":

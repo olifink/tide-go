@@ -549,3 +549,33 @@ func TestAppEditorFullscreenKeyZInViewMode(t *testing.T) {
 		t.Errorf("expected EditorFullscreen false after pressing 'z' second time")
 	}
 }
+
+func TestAppEditorPressEEntersEditMode(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-e-key-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "test.go")
+	_ = os.WriteFile(filePath, []byte("package main"), 0644)
+
+	m := InitialModel(filePath)
+	m.Width = 100
+	m.Height = 30
+	m.Editor.Mode = editor.ModeView
+	m.ActivePane = PaneEditor
+	m.updateFocus()
+
+	if m.Editor.Mode != editor.ModeView {
+		t.Fatalf("expected ModeView initially")
+	}
+
+	// Press 'e' in editor view mode
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	m = newM.(Model)
+
+	if m.Editor.Mode != editor.ModeEdit {
+		t.Errorf("expected ModeEdit after pressing 'e', got %d", m.Editor.Mode)
+	}
+}
