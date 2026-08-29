@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"tide/internal/runner"
 )
 
@@ -139,7 +140,7 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "home", "g":
 			m.ScrollLine = 0
 		case "end", "G":
-			m.ScrollLine = max(0, m.Buffer.LineCount-m.Height+1)
+			m.ScrollLine = max(0, m.Buffer.LineCount-(m.Height-1))
 		}
 	}
 
@@ -153,24 +154,39 @@ func (m *Model) ScrollUp(n int) {
 
 // ScrollDown scrolls down by n lines.
 func (m *Model) ScrollDown(n int) {
-	maxScroll := max(0, m.Buffer.LineCount-m.Height+2)
+	contentHeight := max(1, m.Height-1)
+	maxScroll := max(0, m.Buffer.LineCount-contentHeight)
 	m.ScrollLine = min(maxScroll, m.ScrollLine+n)
 }
 
 // View renders the editor component.
 func (m *Model) View() string {
+	contentHeight := max(1, m.Height-1)
+
 	if !m.Buffer.IsLoaded {
+		var blankLines []string
 		if m.Buffer.ErrorMessage != "" {
-			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Padding(2, 2)
-			return errStyle.Render(fmt.Sprintf("Error opening file:\n%s", m.Buffer.ErrorMessage))
+			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Padding(1, 1)
+			rendered := errStyle.Render(fmt.Sprintf("Error opening file:\n%s", m.Buffer.ErrorMessage))
+			errLines := strings.Split(rendered, "\n")
+			blankLines = append(blankLines, errLines...)
+		} else {
+			welcomeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Padding(1, 1)
+			welcomeText := "Welcome to TIDE\n\n- Select a file from sidebar (^F)\n- Press ^N to create a new file\n- Press ^R to run or build\n- Press ^G to ask Gemini"
+			rendered := welcomeStyle.Render(welcomeText)
+			welcomeLines := strings.Split(rendered, "\n")
+			blankLines = append(blankLines, welcomeLines...)
 		}
-		welcomeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Padding(2, 2)
-		return welcomeStyle.Render("Welcome to TIDE\n\n- Select a file from the sidebar (or press ^F)\n- Press ^N to create a new file\n- Press ^R to run or build\n- Press ^G to ask Gemini")
+		for len(blankLines) < m.Height {
+			blankLines = append(blankLines, "")
+		}
+		if len(blankLines) > m.Height {
+			blankLines = blankLines[:m.Height]
+		}
+		return strings.Join(blankLines, "\n")
 	}
 
-	contentHeight := max(1, m.Height-1)
 	var content string
-
 	if m.Mode == ModeEdit {
 		content = m.Textarea.View()
 	} else {
@@ -185,13 +201,20 @@ func (m *Model) View() string {
 		)
 	}
 
-	// Pad lines if fewer than contentHeight
+	// Ensure exact height and width for code lines
 	renderedLines := strings.Split(content, "\n")
 	for len(renderedLines) < contentHeight {
 		renderedLines = append(renderedLines, "")
 	}
 	if len(renderedLines) > contentHeight {
 		renderedLines = renderedLines[:contentHeight]
+	}
+
+	// Truncate every code line to m.Width
+	for idx, line := range renderedLines {
+		if m.Width > 0 && ansi.StringWidth(line) > m.Width {
+			renderedLines[idx] = ansi.Truncate(line, m.Width, "")
+		}
 	}
 
 	// Mode / Status bar at bottom of editor pane
@@ -202,14 +225,14 @@ func (m *Model) View() string {
 			Foreground(lipgloss.Color("#282A36")).
 			Bold(true).
 			Render(" EDIT ") + " " +
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C")).Render("^S Save  ^E Return to View")
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C")).Render("^S Save  ^E View")
 	} else {
 		modeBadge = lipgloss.NewStyle().
 			Background(lipgloss.Color("#BD93F9")).
 			Foreground(lipgloss.Color("#282A36")).
 			Bold(true).
 			Render(" VIEW ") + " " +
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render("^E Switch to Edit Mode  ↑/↓ Scroll")
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render("^E Edit  ↑/↓ Scroll")
 	}
 
 	langBadge := lipgloss.NewStyle().
@@ -217,6 +240,14 @@ func (m *Model) View() string {
 		Render(fmt.Sprintf("[%s | %d lines]", m.Buffer.Language, m.Buffer.LineCount))
 
 	statusBar := lipgloss.JoinHorizontal(lipgloss.Top, modeBadge, "  ", langBadge)
+	if m.Width > 0 && ansi.StringWidth(statusBar) > m.Width {
+		statusBar = ansi.Truncate(statusBar, m.Width, "")
+	}
 
-	return strings.Join(renderedLines, "\n") + "\n" + statusBar
+	renderedLines = append(renderedLines, statusBar)
+	if len(renderedLines) > m.Height {
+		renderedLines = renderedLines[:m.Height]
+	}
+
+	return strings.Join(renderedLines, "\n")
 }

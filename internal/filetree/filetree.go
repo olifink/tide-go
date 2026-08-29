@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // FileItem represents a file or directory entry in the tree.
@@ -229,20 +230,31 @@ func (m *Model) SetSize(width, height int) {
 
 // View renders the file tree.
 func (m *Model) View() string {
-	if len(m.VisibleItems) == 0 {
-		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#767676")).Padding(1, 1)
-		return emptyStyle.Render("No files in directory\n\nPress ^N to create")
-	}
+	targetHeight := max(1, m.Height)
+	targetWidth := max(10, m.Width)
 
-	contentWidth := max(10, m.Width-2)
-	visibleHeight := max(1, m.Height)
+	if len(m.VisibleItems) == 0 {
+		emptyLines := []string{
+			"No files found",
+			"",
+			"Press ^N to create",
+		}
+		for len(emptyLines) < targetHeight {
+			emptyLines = append(emptyLines, "")
+		}
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#767676"))
+		for i, line := range emptyLines {
+			emptyLines[i] = emptyStyle.Render(ansi.Truncate(line, targetWidth, ""))
+		}
+		return strings.Join(emptyLines[:targetHeight], "\n")
+	}
 
 	// Calculate scrolling window
 	startIdx := 0
-	if m.Cursor >= visibleHeight {
-		startIdx = m.Cursor - visibleHeight + 1
+	if m.Cursor >= targetHeight {
+		startIdx = m.Cursor - targetHeight + 1
 	}
-	endIdx := min(len(m.VisibleItems), startIdx+visibleHeight)
+	endIdx := min(len(m.VisibleItems), startIdx+targetHeight)
 
 	var lines []string
 	for i := startIdx; i < endIdx; i++ {
@@ -271,14 +283,8 @@ func (m *Model) View() string {
 			cursorMarker = ">"
 		}
 
-		// Text formatting
-		displayName := item.Name
-		maxNameLen := contentWidth - len(indent) - len(icon) - 2
-		if maxNameLen > 0 && len(displayName) > maxNameLen {
-			displayName = displayName[:maxNameLen-3] + "..."
-		}
-
-		lineStr := cursorMarker + " " + indent + icon + displayName
+		// Format line text
+		lineStr := cursorMarker + " " + indent + icon + item.Name
 
 		// Apply styling
 		var style lipgloss.Style
@@ -300,13 +306,19 @@ func (m *Model) View() string {
 				Foreground(lipgloss.Color("#F8F8F2"))
 		}
 
-		// Pad to width for clean selection bar
+		// Render with style and truncate to targetWidth
 		renderedLine := style.Render(lineStr)
+		if targetWidth > 0 && ansi.StringWidth(renderedLine) > targetWidth {
+			renderedLine = ansi.Truncate(renderedLine, targetWidth, "")
+		}
 		lines = append(lines, renderedLine)
 	}
 
-	for len(lines) < visibleHeight {
+	for len(lines) < targetHeight {
 		lines = append(lines, "")
+	}
+	if len(lines) > targetHeight {
+		lines = lines[:targetHeight]
 	}
 
 	return strings.Join(lines, "\n")

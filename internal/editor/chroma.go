@@ -11,13 +11,23 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"tide/internal/runner"
 )
 
-// HighlightCode renders source code using Chroma with line numbers and error gutters.
+// HighlightCode renders source code using Chroma with line numbers and error gutters,
+// strictly truncating lines to avoid terminal wrapping and layout shifts.
 func HighlightCode(filename string, content string, themeName string, diagnostics map[int][]runner.Diagnostic, startLine int, maxLines int, width int) string {
-	if content == "" {
+	if maxLines <= 0 {
 		return ""
+	}
+
+	if content == "" {
+		var blank []string
+		for i := 0; i < maxLines; i++ {
+			blank = append(blank, "")
+		}
+		return strings.Join(blank, "\n")
 	}
 
 	// 1. Select Lexer
@@ -36,12 +46,10 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 		style = styles.Fallback
 	}
 
-	// 3. Tokenize content into lines
-	lines := strings.Split(content, "\n")
+	// 3. Tokenize content into lines (normalize tabs to 4 spaces)
+	normalizedContent := strings.ReplaceAll(content, "\t", "    ")
+	lines := strings.Split(normalizedContent, "\n")
 	totalLines := len(lines)
-	if totalLines == 0 {
-		return ""
-	}
 
 	// Determine gutter width based on total lines (e.g., " 123 | ")
 	gutterDigits := len(fmt.Sprintf("%d", totalLines))
@@ -135,7 +143,7 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 		// If line has diagnostic message and fits width, append inline indicator
 		if diagMsg != "" && width > 40 {
 			msgPreview := "  ◄ " + diagMsg
-			availWidth := width - lipgloss.Width(fullLine) - 2
+			availWidth := width - ansi.StringWidth(fullLine) - 2
 			if availWidth > 8 {
 				if len(msgPreview) > availWidth {
 					msgPreview = msgPreview[:availWidth-3] + "..."
@@ -144,7 +152,17 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 			}
 		}
 
+		// Strictly truncate full line to width to prevent horizontal wrapping
+		if width > 0 && ansi.StringWidth(fullLine) > width {
+			fullLine = ansi.Truncate(fullLine, width, "")
+		}
+
 		renderedLines = append(renderedLines, fullLine)
+	}
+
+	// Pad remaining lines to always match maxLines exactly
+	for len(renderedLines) < maxLines {
+		renderedLines = append(renderedLines, "")
 	}
 
 	return strings.Join(renderedLines, "\n")

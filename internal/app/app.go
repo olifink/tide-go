@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"tide/internal/ai"
 	"tide/internal/config"
 	"tide/internal/console"
@@ -418,14 +419,28 @@ func (m *Model) recalculateLayout() {
 	consoleH := max(6, int(float64(bodyTotalH)*0.28))
 	mainH := max(4, bodyTotalH-consoleH)
 
-	// Fixed width for file explorer (24-28 chars)
+	// Fixed width for file explorer (24-30 chars)
 	sidebarW := min(30, max(20, int(float64(m.Width)*0.22)))
 	editorW := max(20, m.Width-sidebarW)
 
-	// Update components
-	m.FileTree.SetSize(sidebarW-2, mainH-2)
-	m.Editor.SetSize(editorW-2, mainH-2)
-	m.Console.SetSize(m.Width-2, consoleH-2)
+	sidebarInnerW := max(10, sidebarW-2)
+	sidebarInnerH := max(1, mainH-2)
+
+	editorInnerW := max(10, editorW-2)
+	editorInnerH := max(1, mainH-2)
+
+	consoleInnerW := max(10, m.Width-2)
+	consoleInnerH := max(1, consoleH-2)
+
+	// Inside sidebarBox: 1 row is for title, so filetree gets (sidebarInnerH - 1)
+	m.FileTree.SetSize(sidebarInnerW, max(1, sidebarInnerH-1))
+
+	// Inside editorBox: 1 row is for title, so editor gets (editorInnerH - 1)
+	m.Editor.SetSize(editorInnerW, max(1, editorInnerH-1))
+
+	// Inside consoleBox: console gets consoleInnerH
+	m.Console.SetSize(consoleInnerW, consoleInnerH)
+
 	m.Modal.SetSize(m.Width, m.Height)
 }
 
@@ -443,6 +458,13 @@ func (m Model) View() string {
 
 	sidebarW := min(30, max(20, int(float64(m.Width)*0.22)))
 	editorW := max(20, m.Width-sidebarW)
+
+	sidebarInnerW := max(10, sidebarW-2)
+	sidebarInnerH := max(1, mainH-2)
+	editorInnerW := max(10, editorW-2)
+	editorInnerH := max(1, mainH-2)
+	consoleInnerW := max(10, m.Width-2)
+	consoleInnerH := max(1, consoleH-2)
 
 	// 1. Header Bar
 	logo := HeaderLogoStyle.Render("🌊 TIDE v0.1")
@@ -468,6 +490,9 @@ func (m Model) View() string {
 	}
 
 	headerLeft := lipgloss.JoinHorizontal(lipgloss.Center, logo, dirBadge, activeFileBadge, modBadge, statusText)
+	if ansi.StringWidth(headerLeft) > m.Width {
+		headerLeft = ansi.Truncate(headerLeft, m.Width, "")
+	}
 	headerBar := lipgloss.NewStyle().
 		Width(m.Width).
 		Background(ColorBg).
@@ -480,10 +505,13 @@ func (m Model) View() string {
 		sidebarBorder = ActiveBorderStyle
 		sidebarTitle = PanelTitleActive.Render("── FILES [Active] ──")
 	}
+	sidebarTitle = ansi.Truncate(sidebarTitle, sidebarInnerW, "")
 	sidebarContent := sidebarTitle + "\n" + m.FileTree.View()
 	sidebarBox := sidebarBorder.
-		Width(sidebarW - 2).
-		Height(mainH - 2).
+		Width(sidebarInnerW).
+		Height(sidebarInnerH).
+		MaxHeight(sidebarInnerH).
+		MaxWidth(sidebarInnerW).
 		Render(sidebarContent)
 
 	// 3. Editor Box
@@ -494,10 +522,13 @@ func (m Model) View() string {
 		editorBorder = ActiveBorderStyle
 		editorTitle = PanelTitleActive.Render(fmt.Sprintf("── %s [%s] (Active) ──", fileName, m.Editor.Buffer.Language))
 	}
+	editorTitle = ansi.Truncate(editorTitle, editorInnerW, "")
 	editorContent := editorTitle + "\n" + m.Editor.View()
 	editorBox := editorBorder.
-		Width(editorW - 2).
-		Height(mainH - 2).
+		Width(editorInnerW).
+		Height(editorInnerH).
+		MaxHeight(editorInnerH).
+		MaxWidth(editorInnerW).
 		Render(editorContent)
 
 	mainSplit := lipgloss.JoinHorizontal(lipgloss.Top, sidebarBox, editorBox)
@@ -508,8 +539,10 @@ func (m Model) View() string {
 		consoleBorder = ActiveBorderStyle
 	}
 	consoleBox := consoleBorder.
-		Width(m.Width - 2).
-		Height(consoleH - 2).
+		Width(consoleInnerW).
+		Height(consoleInnerH).
+		MaxHeight(consoleInnerH).
+		MaxWidth(consoleInnerW).
 		Render(m.Console.View())
 
 	// 5. Pico Footer Bar
@@ -535,6 +568,9 @@ func (m Model) View() string {
 	}
 
 	footerContent := strings.Join(keyItems, " ")
+	if ansi.StringWidth(footerContent) > m.Width {
+		footerContent = ansi.Truncate(footerContent, m.Width, "")
+	}
 	footerBar := lipgloss.NewStyle().
 		Width(m.Width).
 		Background(ColorSurface).
