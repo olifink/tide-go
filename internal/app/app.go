@@ -111,6 +111,7 @@ func InitialModel(startPath string) Model {
 		m.FileTree.SelectFile(initialFile)
 		if m.Editor.Buffer.IsLoaded {
 			m.ActivePane = PaneEditor
+			m.EditorFullscreen = true
 		}
 	} else if len(ft.VisibleItems) > 0 {
 		// Auto-open first valid text file within size limits if available

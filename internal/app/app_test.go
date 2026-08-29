@@ -29,6 +29,9 @@ func TestAppInitialModel(t *testing.T) {
 	if m.Editor.Buffer.FileName() != "main.go" {
 		t.Errorf("expected main.go loaded, got %s", m.Editor.Buffer.FileName())
 	}
+	if m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen false when directory launched")
+	}
 }
 
 func TestAppInitialModelWithNonExistentFile(t *testing.T) {
@@ -64,6 +67,9 @@ func TestAppInitialModelWithNonExistentFile(t *testing.T) {
 	if m.ActivePane != PaneEditor {
 		t.Errorf("expected PaneEditor active, got %d", m.ActivePane)
 	}
+	if !m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen true when file launched")
+	}
 	if !strings.Contains(m.StatusMessage, "Created & opened app.c") {
 		t.Errorf("unexpected status message: %s", m.StatusMessage)
 	}
@@ -88,6 +94,9 @@ func TestAppInitialModelWithExistingFile(t *testing.T) {
 	}
 	if m.ActivePane != PaneEditor {
 		t.Errorf("expected PaneEditor active for existing file")
+	}
+	if !m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen true when existing file launched")
 	}
 }
 
