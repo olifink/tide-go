@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"tide/internal/ai"
+	"tide/internal/editor"
 	"tide/internal/modal"
 	"tide/internal/runner"
 )
@@ -472,5 +473,70 @@ func TestAppFileTreeToggleDotKey(t *testing.T) {
 	}
 	if !strings.Contains(m.StatusMessage, "Hiding hidden files") {
 		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+}
+
+func TestAppEditorFullscreenToggle(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Initial state
+	if m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen false initially")
+	}
+
+	// Press Ctrl+Z to enter Fullscreen
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	m = newM.(Model)
+
+	if !m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen true after pressing Ctrl+Z")
+	}
+	if m.ActivePane != PaneEditor {
+		t.Errorf("expected ActivePane to be PaneEditor in fullscreen, got %d", m.ActivePane)
+	}
+	if m.Editor.Width < 90 {
+		t.Errorf("expected Editor.Width to expand to full width (~98), got %d", m.Editor.Width)
+	}
+	if !strings.Contains(m.StatusMessage, "Editor fullscreen enabled") {
+		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+
+	// Press Ctrl+Z again to restore
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlZ})
+	m = newM.(Model)
+
+	if m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen false after pressing Ctrl+Z second time")
+	}
+	if !strings.Contains(m.StatusMessage, "Restored") {
+		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+}
+
+func TestAppEditorFullscreenKeyZInViewMode(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.ActivePane = PaneEditor
+	m.Editor.Mode = editor.ModeView
+	m.updateFocus()
+
+	// Press 'z' in editor view mode
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	m = newM.(Model)
+
+	if !m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen true after pressing 'z' in View mode")
+	}
+
+	// Press 'z' again in editor view mode to restore
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	m = newM.(Model)
+
+	if m.EditorFullscreen {
+		t.Errorf("expected EditorFullscreen false after pressing 'z' second time")
 	}
 }

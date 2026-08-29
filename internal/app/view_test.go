@@ -40,5 +40,18 @@ func TestAppViewLineCount(t *testing.T) {
 		if lineCountMax > h {
 			t.Errorf("FAIL: Size %dx%d maximized produced %d lines (overflows by %d lines!)", w, h, lineCountMax, lineCountMax-h)
 		}
+
+		// Test fullscreen editor line count
+		m.ConsoleMaximized = false
+		m.EditorFullscreen = true
+		m.recalculateLayout()
+		viewFull := m.View()
+		linesFull := strings.Split(viewFull, "\n")
+		lineCountFull := len(linesFull)
+
+		t.Logf("Size %dx%d (fullscreen): view produced %d lines (expected <= %d)", w, h, lineCountFull, h)
+		if lineCountFull > h {
+			t.Errorf("FAIL: Size %dx%d fullscreen produced %d lines (overflows by %d lines!)", w, h, lineCountFull, lineCountFull-h)
+		}
 	}
 }

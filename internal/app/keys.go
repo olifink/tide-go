@@ -17,6 +17,7 @@ type KeyMap struct {
 	Backtab      key.Binding
 	Escape       key.Binding
 	FocusConsole key.Binding
+	Fullscreen   key.Binding
 }
 
 // DefaultKeyMap returns the standard key bindings.
@@ -73,6 +74,10 @@ func DefaultKeyMap() KeyMap {
 		FocusConsole: key.NewBinding(
 			key.WithKeys("shift+esc"),
 			key.WithHelp("Shift+Esc", "Focus Console"),
+		),
+		Fullscreen: key.NewBinding(
+			key.WithKeys("ctrl+z", "f11"),
+			key.WithHelp("^Z", "Fullscreen"),
 		),
 	}
 }

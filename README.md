@@ -33,6 +33,8 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Shift+Esc` | Focus Console | Global | Immediately switches focus to the Output / Console panel |
 | `.` | Toggle Hidden Files | Files | Toggles display of hidden dot files and directories (`.gitignore`, `.github`, etc.) |
 | `r` | Refresh Files | Files | Re-scans the current workspace directory from disk |
+| `Ctrl+Z` (or `F11`) | Toggle Fullscreen / Zen | Global | Expands the code editor to full screen, hiding files and console |
+| `z` | Toggle Fullscreen | Editor (View) | Quick full-screen toggle when inside Editor View mode |
 | `w` | Toggle Word Wrap | Editor (View) | Toggles word-wrapping on long lines with `↳` continuation indicators |
 | `←` / `→` (or `h` / `l`) | Horizontal Scroll | Editor (View) | Scrolls left/right through long lines when word-wrap is disabled |
 | `0` / `Home` | Scroll to Start | Editor (View) | Resets horizontal scroll offset back to column 0 |

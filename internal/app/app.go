@@ -43,10 +43,11 @@ type Model struct {
 	Diagnostics   []runner.Diagnostic
 	StatusMessage string
 	AIChannel     chan ai.AIChunkMsg
-	pendingAIQ    string
+	pendingAIQ       string
 	activeAIMode     ai.AIMode
 	aiResponse       string
 	ConsoleMaximized bool
+	EditorFullscreen bool
 }
 
 // InitialModel initializes the TIDE application model.
@@ -340,7 +341,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+q":
 			return m, tea.Quit
 
+		case "ctrl+z", "f11":
+			m.ToggleEditorFullscreen()
+			return m, nil
+
 		case "ctrl+f":
+			if m.EditorFullscreen {
+				m.EditorFullscreen = false
+				m.recalculateLayout()
+			}
 			if m.ActivePane == PaneFiles {
 				m.ActivePane = PaneEditor
 			} else {
@@ -454,16 +463,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Editor, edCmd = m.Editor.Update(msg)
 				return m, edCmd
 			}
+			if m.EditorFullscreen {
+				return m, nil
+			}
 			m.ActivePane = (m.ActivePane + 1) % 3
 			m.updateFocus()
 			return m, nil
 
 		case "shift+tab":
+			if m.EditorFullscreen {
+				return m, nil
+			}
 			m.ActivePane = (m.ActivePane + 2) % 3
 			m.updateFocus()
 			return m, nil
 
 		case "shift+esc", "alt+esc":
+			if m.EditorFullscreen {
+				m.EditorFullscreen = false
+				m.recalculateLayout()
+			}
 			if m.Editor.Mode == editor.ModeEdit {
 				m.Editor.ToggleMode()
 			}
@@ -530,6 +549,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case PaneEditor:
+			if m.Editor.Mode == editor.ModeView {
+				if msg.String() == "z" || msg.String() == "Z" {
+					m.ToggleEditorFullscreen()
+					return m, nil
+				}
+			}
 			var edCmd tea.Cmd
 			m.Editor, edCmd = m.Editor.Update(msg)
 			cmds = append(cmds, edCmd)
@@ -652,6 +677,14 @@ func (m *Model) recalculateLayout() {
 	footerH := 1
 	bodyTotalH := max(4, m.Height-headerH-footerH)
 
+	if m.EditorFullscreen {
+		editorInnerW := max(10, m.Width-2)
+		editorInnerH := max(1, bodyTotalH-2)
+		m.Editor.SetSize(editorInnerW, editorInnerH)
+		m.Modal.SetSize(m.Width, m.Height)
+		return
+	}
+
 	var consoleH int
 	if m.ConsoleMaximized {
 		consoleH = max(6, int(float64(bodyTotalH)*0.75))
@@ -681,6 +714,19 @@ func (m *Model) recalculateLayout() {
 	m.Editor.SetSize(editorInnerW, editorInnerH)
 	m.Console.SetSize(consoleInnerW, consoleInnerH)
 	m.Modal.SetSize(m.Width, m.Height)
+}
+
+// ToggleEditorFullscreen toggles full-screen editor mode, hiding sidebar and console.
+func (m *Model) ToggleEditorFullscreen() {
+	m.EditorFullscreen = !m.EditorFullscreen
+	m.recalculateLayout()
+	if m.EditorFullscreen {
+		m.ActivePane = PaneEditor
+		m.updateFocus()
+		m.StatusMessage = "Editor fullscreen enabled (Press ^Z or 'z' to restore)"
+	} else {
+		m.StatusMessage = "Restored standard multi-pane layout"
+	}
 }
 
 // RenderTitledBox renders a bordered box with the title embedded directly on the top border line.
@@ -816,6 +862,89 @@ func (m Model) View() string {
 		Background(ColorBg).
 		Render(headerLeft)
 
+	// Fullscreen Editor Mode (hides sidebar and console)
+	if m.EditorFullscreen {
+		editorInnerW := max(10, m.Width-2)
+		editorInnerH := max(1, bodyTotalH-2)
+
+		editorBorder := ActiveBorderStyle
+		editorTitleText := fmt.Sprintf("%s [%s] (Fullscreen)", fileName, m.Editor.Buffer.Language)
+		editorTitleStyle := PanelTitleActive
+		if m.Editor.Buffer.IsModified {
+			editorTitleText += " [MOD]"
+		}
+		editorHint := "^Z Restore  w Wrap  ^E Edit"
+		editorBox := RenderTitledBox(
+			editorBorder,
+			editorTitleText,
+			editorTitleStyle,
+			editorHint,
+			m.Editor.View(),
+			editorInnerW,
+			editorInnerH,
+		)
+
+		keys := []struct {
+			key  string
+			desc string
+		}{
+			{"^Z", "Restore"},
+			{"^E", "Edit/View"},
+			{"^S", "Save"},
+			{"w", "Wrap"},
+			{"^G", "Gemini"},
+			{"^F", "Files"},
+			{"^Q", "Quit"},
+		}
+
+		var keyItems []string
+		for _, k := range keys {
+			renderedKey := FooterKeyStyle.Render(" " + k.key + " ")
+			renderedDesc := FooterDescStyle.Render(k.desc)
+			keyItems = append(keyItems, renderedKey+renderedDesc)
+		}
+
+		footerContent := strings.Join(keyItems, " ")
+		if ansi.StringWidth(footerContent) > m.Width {
+			footerContent = ansi.Truncate(footerContent, m.Width, "")
+		}
+		footerBar := lipgloss.NewStyle().
+			Width(m.Width).
+			Background(ColorSurface).
+			Render(footerContent)
+
+		fullScreen := lipgloss.JoinVertical(
+			lipgloss.Left,
+			headerBar,
+			editorBox,
+			footerBar,
+		)
+
+		renderedLines := strings.Split(fullScreen, "\n")
+		for len(renderedLines) < m.Height {
+			renderedLines = append(renderedLines, "")
+		}
+		if len(renderedLines) > m.Height {
+			renderedLines = renderedLines[:m.Height]
+		}
+		fullScreen = strings.Join(renderedLines, "\n")
+
+		if m.Modal.Active {
+			modalView := m.Modal.View()
+			return lipgloss.Place(
+				m.Width,
+				m.Height,
+				lipgloss.Center,
+				lipgloss.Center,
+				modalView,
+				lipgloss.WithWhitespaceChars(" "),
+				lipgloss.WithWhitespaceForeground(ColorOverlay),
+			)
+		}
+
+		return fullScreen
+	}
+
 	// 2. File Sidebar Box with Border-Embedded Title
 	sidebarBorder := InactiveBorderStyle
 	sidebarTitleText := "FILES"
@@ -910,6 +1039,7 @@ func (m Model) View() string {
 		{"^S", "Save"},
 		{"^B", "Build"},
 		{"^R", "Run"},
+		{"^Z", "Full"},
 		{"^X", "Shell"},
 		{"^G", "Gemini"},
 		{"^Q", "Quit"},
