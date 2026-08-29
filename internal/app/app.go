@@ -466,7 +466,7 @@ func (m Model) View() string {
 	consoleInnerW := max(10, m.Width-2)
 	consoleInnerH := max(1, consoleH-2)
 
-	// 1. Header Bar
+	// 1. Header Bar (exactly 1 line)
 	logo := HeaderLogoStyle.Render("🌊 TIDE v0.1")
 
 	dirDisplay := m.WorkingDir
@@ -498,7 +498,7 @@ func (m Model) View() string {
 		Background(ColorBg).
 		Render(headerLeft)
 
-	// 2. File Sidebar Box
+	// 2. File Sidebar Box (inner height = sidebarInnerH, outer height = mainH)
 	sidebarBorder := InactiveBorderStyle
 	sidebarTitle := PanelTitleInactive.Render("── FILES ──")
 	if m.ActivePane == PaneFiles {
@@ -510,11 +510,9 @@ func (m Model) View() string {
 	sidebarBox := sidebarBorder.
 		Width(sidebarInnerW).
 		Height(sidebarInnerH).
-		MaxHeight(sidebarInnerH).
-		MaxWidth(sidebarInnerW).
 		Render(sidebarContent)
 
-	// 3. Editor Box
+	// 3. Editor Box (inner height = editorInnerH, outer height = mainH)
 	editorBorder := InactiveBorderStyle
 	editorTitleStr := fmt.Sprintf("── %s [%s] ──", fileName, m.Editor.Buffer.Language)
 	editorTitle := PanelTitleInactive.Render(editorTitleStr)
@@ -527,13 +525,11 @@ func (m Model) View() string {
 	editorBox := editorBorder.
 		Width(editorInnerW).
 		Height(editorInnerH).
-		MaxHeight(editorInnerH).
-		MaxWidth(editorInnerW).
 		Render(editorContent)
 
 	mainSplit := lipgloss.JoinHorizontal(lipgloss.Top, sidebarBox, editorBox)
 
-	// 4. Console Box
+	// 4. Console Box (inner height = consoleInnerH, outer height = consoleH)
 	consoleBorder := InactiveBorderStyle
 	if m.ActivePane == PaneConsole {
 		consoleBorder = ActiveBorderStyle
@@ -541,11 +537,9 @@ func (m Model) View() string {
 	consoleBox := consoleBorder.
 		Width(consoleInnerW).
 		Height(consoleInnerH).
-		MaxHeight(consoleInnerH).
-		MaxWidth(consoleInnerW).
 		Render(m.Console.View())
 
-	// 5. Pico Footer Bar
+	// 5. Pico Footer Bar (exactly 1 line)
 	keys := []struct {
 		key  string
 		desc string
@@ -584,6 +578,16 @@ func (m Model) View() string {
 		consoleBox,
 		footerBar,
 	)
+
+	// Ensure the fullScreen output matches m.Height exactly
+	renderedLines := strings.Split(fullScreen, "\n")
+	for len(renderedLines) < m.Height {
+		renderedLines = append(renderedLines, "")
+	}
+	if len(renderedLines) > m.Height {
+		renderedLines = renderedLines[:m.Height]
+	}
+	fullScreen = strings.Join(renderedLines, "\n")
 
 	// 6. Overlay Modal if active
 	if m.Modal.Active {
