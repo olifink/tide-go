@@ -149,6 +149,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runner.ProcessFinishedMsg:
 		m.Console.IsRunning = false
+		m.ActivePane = PaneConsole
+		m.updateFocus()
 		isBuild := strings.HasPrefix(msg.Command, "go build") || strings.HasPrefix(msg.Command, "make") || strings.HasPrefix(msg.Command, "gcc") || strings.HasPrefix(msg.Command, "g++")
 		m.Console.AddCommandResult(msg, isBuild)
 		m.Diagnostics = msg.Diagnostics
@@ -228,6 +230,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.StatusMessage = fmt.Sprintf("Created & opened %s", filepath.Base(fullPath))
 
 				case modal.ShellCommand:
+					if m.Editor.Mode == editor.ModeEdit {
+						m.Editor.ToggleMode()
+					}
+					m.ActivePane = PaneConsole
+					m.updateFocus()
 					m.Console.IsRunning = true
 					m.Console.RunningTitle = val
 					m.StatusMessage = fmt.Sprintf("Running: %s", val)
@@ -297,11 +304,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "ctrl+r":
+			if m.Editor.Mode == editor.ModeEdit {
+				m.Editor.ToggleMode()
+			}
 			target := runner.DetectBuildTarget(m.WorkingDir, m.Editor.Buffer.FilePath)
 			cmdToRun := target.Command
 			if cmdToRun == "" {
 				cmdToRun = "go build ."
 			}
+			m.ActivePane = PaneConsole
+			m.updateFocus()
 			m.Console.IsRunning = true
 			m.Console.RunningTitle = cmdToRun
 			m.StatusMessage = fmt.Sprintf("Building (%s)...", target.Description)
@@ -339,6 +351,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "shift+tab":
 			m.ActivePane = (m.ActivePane + 2) % 3
+			m.updateFocus()
+			return m, nil
+
+		case "shift+esc", "alt+esc":
+			if m.Editor.Mode == editor.ModeEdit {
+				m.Editor.ToggleMode()
+			}
+			m.ActivePane = PaneConsole
 			m.updateFocus()
 			return m, nil
 

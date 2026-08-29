@@ -28,7 +28,8 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Ctrl+G` | Gemini AI Assistant | Global | Opens AI prompt with full buffer and compiler error context |
 | `Ctrl+Q` | Quit | Global | Exits TIDE |
 | `Tab` / `Shift+Tab` | Cycle Focus | Global | Cycles focus between Files, Editor, and Console panels |
-| `Esc` | Cancel / Blur | Global | Closes open modals or returns to View mode |
+| `Esc` | Focus Editor / Cancel | Global | Focuses the Editor pane (or exits Edit mode / closes open modals) |
+| `Shift+Esc` | Focus Console | Global | Immediately switches focus to the Output / Console panel |
 
 ---
 

@@ -15,6 +15,7 @@ type KeyMap struct {
 	Tab          key.Binding
 	Backtab      key.Binding
 	Escape       key.Binding
+	FocusConsole key.Binding
 }
 
 // DefaultKeyMap returns the standard key bindings.
@@ -62,7 +63,11 @@ func DefaultKeyMap() KeyMap {
 		),
 		Escape: key.NewBinding(
 			key.WithKeys("esc"),
-			key.WithHelp("Esc", "Close/Cancel"),
+			key.WithHelp("Esc", "Focus Editor / View"),
+		),
+		FocusConsole: key.NewBinding(
+			key.WithKeys("shift+esc"),
+			key.WithHelp("Shift+Esc", "Focus Console"),
 		),
 	}
 }

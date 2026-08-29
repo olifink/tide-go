@@ -234,3 +234,45 @@ func TestAppTabInEditModeInsertsTab(t *testing.T) {
 		t.Errorf("expected textarea to contain tab indentation, got: %q", val)
 	}
 }
+
+func TestAppShiftEscFocusesConsole(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	m.ActivePane = PaneEditor
+	m.updateFocus()
+
+	// Test alt+esc / shift+esc
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEscape, Alt: true})
+	m = newM.(Model)
+
+	if m.ActivePane != PaneConsole {
+		t.Errorf("expected Shift+Esc / Alt+Esc to focus console, got %d", m.ActivePane)
+	}
+	if !m.Console.Focused {
+		t.Errorf("expected console to be focused")
+	}
+}
+
+func TestAppBuildFocusesConsole(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	m.ActivePane = PaneEditor
+	m.updateFocus()
+
+	// Trigger Build with Ctrl+R
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = newM.(Model)
+
+	if m.ActivePane != PaneConsole {
+		t.Errorf("expected Ctrl+R to switch active pane to PaneConsole, got %d", m.ActivePane)
+	}
+	if !m.Console.Focused {
+		t.Errorf("expected console to be focused")
+	}
+}
