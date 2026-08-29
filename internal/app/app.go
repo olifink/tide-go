@@ -519,6 +519,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.updateFocus()
 				}
 				return m, nil
+			case ".":
+				m.FileTree.ToggleHidden()
+				if m.FileTree.ShowHidden {
+					m.StatusMessage = "Showing hidden files (. to toggle)"
+				} else {
+					m.StatusMessage = "Hiding hidden files (. to toggle)"
+				}
+				return m, nil
 			case "r":
 				m.FileTree.Refresh()
 				m.StatusMessage = "File list refreshed"
@@ -816,16 +824,26 @@ func (m Model) View() string {
 	sidebarBorder := InactiveBorderStyle
 	sidebarTitleText := "FILES"
 	sidebarTitleStyle := PanelTitleInactive
+	sidebarHint := ". Hidden  r Refresh"
+	if m.FileTree.ShowHidden {
+		sidebarHint = ". All Files  r Refresh"
+	}
 	if m.ActivePane == PaneFiles {
 		sidebarBorder = ActiveBorderStyle
-		sidebarTitleText = "FILES [Active]"
+		if m.FileTree.ShowHidden {
+			sidebarTitleText = "FILES [All] (Active)"
+		} else {
+			sidebarTitleText = "FILES [Active]"
+		}
 		sidebarTitleStyle = PanelTitleActive
+	} else if m.FileTree.ShowHidden {
+		sidebarTitleText = "FILES [All]"
 	}
 	sidebarBox := RenderTitledBox(
 		sidebarBorder,
 		sidebarTitleText,
 		sidebarTitleStyle,
-		"",
+		sidebarHint,
 		m.FileTree.View(),
 		sidebarInnerW,
 		sidebarInnerH,

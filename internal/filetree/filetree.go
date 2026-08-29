@@ -28,6 +28,7 @@ type Model struct {
 	VisibleItems []*FileItem
 	Cursor       int
 	ActiveFile   string // File currently loaded in editor
+	ShowHidden   bool   // When true, dot files & folders (.git, .github, .gitignore) are visible
 	Width        int
 	Height       int
 	Focused      bool
@@ -41,10 +42,11 @@ func New(rootPath string, width, height int) Model {
 	}
 
 	m := Model{
-		RootPath: absPath,
-		Width:    width,
-		Height:   height,
-		Cursor:   0,
+		RootPath:   absPath,
+		Width:      width,
+		Height:     height,
+		Cursor:     0,
+		ShowHidden: false,
 	}
 	m.Refresh()
 	return m
@@ -76,6 +78,12 @@ func (m *Model) Refresh() {
 	}
 }
 
+// ToggleHidden toggles display of hidden dot files and directories.
+func (m *Model) ToggleHidden() {
+	m.ShowHidden = !m.ShowHidden
+	m.Refresh()
+}
+
 func (m *Model) buildTree(item *FileItem, expandedPaths map[string]bool, depth int) {
 	if !item.IsDir {
 		return
@@ -91,8 +99,13 @@ func (m *Model) buildTree(item *FileItem, expandedPaths map[string]bool, depth i
 
 	for _, entry := range entries {
 		name := entry.Name()
-		// Ignore hidden files and build output folders like .git, .gemini, etc.
-		if strings.HasPrefix(name, ".") {
+		// Always ignore . and ..
+		if name == "." || name == ".." {
+			continue
+		}
+
+		// Filter hidden files/directories unless ShowHidden is enabled
+		if !m.ShowHidden && strings.HasPrefix(name, ".") {
 			continue
 		}
 
@@ -250,6 +263,7 @@ func (m *Model) View() string {
 			"No files found",
 			"",
 			"Press ^N to create",
+			"Press . for hidden",
 		}
 		for len(emptyLines) < targetHeight {
 			emptyLines = append(emptyLines, "")
@@ -273,6 +287,7 @@ func (m *Model) View() string {
 		item := m.VisibleItems[i]
 		isCursor := i == m.Cursor && m.Focused
 		isActive := item.Path == m.ActiveFile
+		isDot := strings.HasPrefix(item.Name, ".")
 
 		// Indentation
 		indent := strings.Repeat("  ", max(0, item.Depth-1))
@@ -312,13 +327,22 @@ func (m *Model) View() string {
 				Foreground(lipgloss.Color("#74C7EC")).
 				Bold(true)
 		} else if item.IsDir {
-			style = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#8BE9FD")).
-				Bold(true)
+			if isDot {
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#6272A4")).
+					Bold(true)
+			} else {
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#8BE9FD")).
+					Bold(true)
+			}
 		} else if item.IsExecutable {
 			style = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#50FA7B")).
 				Bold(true)
+		} else if isDot {
+			style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#6272A4"))
 		} else {
 			style = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#F8F8F2"))

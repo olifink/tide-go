@@ -440,3 +440,43 @@ func TestAppConsoleToggleMaximize(t *testing.T) {
 		t.Errorf("expected restored height (%d) == default height (%d)", m.Console.Height, defaultConsoleH)
 	}
 }
+
+func TestAppFileTreeToggleDotKey(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-dot-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("SECRET=1"), 0644)
+
+	m := InitialModel(tmpDir)
+	m.ActivePane = PaneFiles
+	m.updateFocus()
+
+	if m.FileTree.ShowHidden {
+		t.Errorf("expected ShowHidden false initially")
+	}
+
+	// Press '.' in Files pane
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	m = newM.(Model)
+
+	if !m.FileTree.ShowHidden {
+		t.Errorf("expected ShowHidden true after pressing '.'")
+	}
+	if !strings.Contains(m.StatusMessage, "Showing hidden files") {
+		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+
+	// Press '.' again
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	m = newM.(Model)
+
+	if m.FileTree.ShowHidden {
+		t.Errorf("expected ShowHidden false after second '.'")
+	}
+	if !strings.Contains(m.StatusMessage, "Hiding hidden files") {
+		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+}

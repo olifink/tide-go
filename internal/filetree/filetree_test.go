@@ -80,3 +80,56 @@ func TestFileTreeExecutableDetection(t *testing.T) {
 		t.Errorf("expected view to contain '* build.sh', got:\n%s", view)
 	}
 }
+
+func TestFileTreeToggleHidden(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-hidden-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	_ = os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte("node_modules"), 0644)
+	_ = os.Mkdir(filepath.Join(tmpDir, ".github"), 0755)
+
+	ft := New(tmpDir, 40, 20)
+
+	// Hidden files should NOT be visible initially
+	for _, item := range ft.VisibleItems {
+		if strings.HasPrefix(item.Name, ".") {
+			t.Errorf("did not expect hidden file %s to be visible initially", item.Name)
+		}
+	}
+
+	// Toggle hidden files ON
+	ft.ToggleHidden()
+	if !ft.ShowHidden {
+		t.Errorf("expected ShowHidden to be true after toggle")
+	}
+
+	foundGitignore := false
+	foundGithubDir := false
+	for _, item := range ft.VisibleItems {
+		if item.Name == ".gitignore" {
+			foundGitignore = true
+		}
+		if item.Name == ".github" {
+			foundGithubDir = true
+		}
+	}
+
+	if !foundGitignore || !foundGithubDir {
+		t.Errorf("expected .gitignore and .github to be visible after toggle ON")
+	}
+
+	// Toggle hidden files OFF
+	ft.ToggleHidden()
+	if ft.ShowHidden {
+		t.Errorf("expected ShowHidden to be false after toggle OFF")
+	}
+	for _, item := range ft.VisibleItems {
+		if strings.HasPrefix(item.Name, ".") {
+			t.Errorf("did not expect hidden file %s after toggle OFF", item.Name)
+		}
+	}
+}
