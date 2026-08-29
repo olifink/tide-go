@@ -25,6 +25,15 @@ func TestModalLifecycle(t *testing.T) {
 		t.Errorf("unexpected shell modal state: %+v", m)
 	}
 
+	// Test Clear
+	m.Clear()
+	if m.Value() != "" {
+		t.Errorf("expected empty value after Clear(), got %s", m.Value())
+	}
+	if !m.Active {
+		t.Errorf("modal should remain active after Clear()")
+	}
+
 	m.OpenGeminiPrompt(true)
 	if !m.Active || m.Type != GeminiPrompt {
 		t.Errorf("expected GeminiPrompt modal active")

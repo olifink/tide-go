@@ -168,6 +168,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.Modal.Active {
 			switch msg.String() {
 			case "esc":
+				if m.Modal.Value() != "" {
+					m.Modal.Clear()
+					return m, nil
+				}
 				m.Modal.Close()
 				m.updateFocus()
 				return m, nil

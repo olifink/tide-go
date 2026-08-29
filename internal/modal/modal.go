@@ -1,6 +1,8 @@
 package modal
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -93,6 +95,11 @@ func (m *Model) OpenAPIKey() {
 	m.Active = true
 }
 
+// Clear clears the current input text without closing the dialog.
+func (m *Model) Clear() {
+	m.Input.SetValue("")
+}
+
 // Close deactivates the modal.
 func (m *Model) Close() {
 	m.Active = false
@@ -152,12 +159,17 @@ func (m *Model) View() string {
 		Padding(1, 2).
 		Width(dialogWidth)
 
+	escHint := "[Esc] Close"
+	if m.Input.Value() != "" {
+		escHint = "[Esc] Clear"
+	}
+
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		titleStyle.Render(m.Title),
 		descStyle.Render(m.Description),
 		m.Input.View(),
-		hintStyle.Render("[Enter] Confirm  •  [Esc] Cancel"),
+		hintStyle.Render(fmt.Sprintf("[Enter] Confirm  •  %s", escHint)),
 	)
 
 	return boxStyle.Render(content)

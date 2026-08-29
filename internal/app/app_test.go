@@ -66,11 +66,41 @@ func TestAppKeyNavigation(t *testing.T) {
 		t.Errorf("expected NewFile modal active")
 	}
 
-	// Esc closes modal
+	// Esc on empty modal closes modal
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = newM.(Model)
 	if m.Modal.Active {
 		t.Errorf("modal should be closed after Esc")
+	}
+}
+
+func TestAppModalEscClearsThenCloses(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Open shell modal with default command
+	m.Modal.OpenShellCommand("git status")
+	if !m.Modal.Active || m.Modal.Value() != "git status" {
+		t.Fatalf("modal not initialized properly")
+	}
+
+	// 1st Esc: clears input, modal remains open
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = newM.(Model)
+	if !m.Modal.Active {
+		t.Errorf("modal should still be active after 1st Esc")
+	}
+	if m.Modal.Value() != "" {
+		t.Errorf("modal input should be empty after 1st Esc, got: %s", m.Modal.Value())
+	}
+
+	// 2nd Esc: closes modal
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = newM.(Model)
+	if m.Modal.Active {
+		t.Errorf("modal should be closed after 2nd Esc on empty input")
 	}
 }
 
