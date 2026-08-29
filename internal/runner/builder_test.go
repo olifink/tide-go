@@ -63,6 +63,24 @@ func TestDetectBuildTargetC(t *testing.T) {
 	}
 }
 
+func TestDetectBuildTargetRust(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-rust-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Test Cargo.toml
+	_ = os.WriteFile(filepath.Join(tmpDir, "Cargo.toml"), []byte("[package]\nname = \"test\""), 0644)
+	target := DetectBuildTarget(tmpDir, "")
+	if target.Type != ProjectRust {
+		t.Errorf("expected ProjectRust, got %s", target.Type)
+	}
+	if target.Command != "cargo build" {
+		t.Errorf("expected 'cargo build', got %s", target.Command)
+	}
+}
+
 func TestDetectRunTarget(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "tide-test-run-*")
 	if err != nil {
@@ -102,7 +120,16 @@ func TestDetectRunTarget(t *testing.T) {
 		t.Errorf("expected './main' for main.go, got: %s", rtGo.Command)
 	}
 
-	// 5. Executable binary
+	// 5. Rust with Cargo.toml -> cargo run
+	_ = os.WriteFile(filepath.Join(tmpDir, "Cargo.toml"), []byte("[package]"), 0644)
+	rsFile := filepath.Join(tmpDir, "main.rs")
+	_ = os.WriteFile(rsFile, []byte("fn main(){}"), 0644)
+	rtRs := DetectRunTarget(tmpDir, rsFile)
+	if rtRs.Command != "cargo run" {
+		t.Errorf("expected 'cargo run' for Cargo project, got: %s", rtRs.Command)
+	}
+
+	// 6. Executable binary
 	binFile := filepath.Join(tmpDir, "mytool")
 	_ = os.WriteFile(binFile, []byte("ELF binary"), 0755)
 	rtBin := DetectRunTarget(tmpDir, binFile)

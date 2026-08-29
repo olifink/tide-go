@@ -12,6 +12,7 @@ type ProjectType string
 const (
 	ProjectGo      ProjectType = "Go"
 	ProjectC       ProjectType = "C/C++"
+	ProjectRust    ProjectType = "Rust"
 	ProjectMake    ProjectType = "Make"
 	ProjectUnknown ProjectType = "Unknown"
 )
@@ -31,7 +32,16 @@ type RunTarget struct {
 
 // DetectBuildTarget analyzes the given directory and active file to determine the best build command.
 func DetectBuildTarget(dir string, activeFile string) BuildTarget {
-	// 1. Check for Makefile
+	// 1. Check for Cargo.toml (Rust project)
+	if fileExists(filepath.Join(dir, "Cargo.toml")) {
+		return BuildTarget{
+			Type:        ProjectRust,
+			Command:     "cargo build",
+			Description: "Cargo build (Cargo.toml detected)",
+		}
+	}
+
+	// 2. Check for Makefile
 	if fileExists(filepath.Join(dir, "Makefile")) || fileExists(filepath.Join(dir, "makefile")) {
 		return BuildTarget{
 			Type:        ProjectMake,
@@ -40,7 +50,7 @@ func DetectBuildTarget(dir string, activeFile string) BuildTarget {
 		}
 	}
 
-	// 2. Check for Go module or Go files
+	// 3. Check for Go module or Go files
 	if fileExists(filepath.Join(dir, "go.mod")) {
 		return BuildTarget{
 			Type:        ProjectGo,
@@ -49,7 +59,7 @@ func DetectBuildTarget(dir string, activeFile string) BuildTarget {
 		}
 	}
 
-	// 3. If active file is a Go file or directory contains .go files
+	// 4. If active file is a Go file or directory contains .go files
 	if activeFile != "" && filepath.Ext(activeFile) == ".go" {
 		return BuildTarget{
 			Type:        ProjectGo,
@@ -65,7 +75,39 @@ func DetectBuildTarget(dir string, activeFile string) BuildTarget {
 		}
 	}
 
-	// 4. Check for C/C++ files
+	// 5. Check for Rust files (.rs)
+	if activeFile != "" && filepath.Ext(activeFile) == ".rs" {
+		base := filepath.Base(activeFile)
+		outName := strings.TrimSuffix(base, ".rs")
+		if fileExists(filepath.Join(dir, "Cargo.toml")) {
+			return BuildTarget{
+				Type:        ProjectRust,
+				Command:     "cargo build",
+				Description: "Cargo build (Rust project)",
+			}
+		}
+		return BuildTarget{
+			Type:        ProjectRust,
+			Command:     "rustc -g " + filepath.ToSlash(activeFile) + " -o " + outName,
+			Description: "Rust compile (" + base + ")",
+		}
+	}
+	if hasFilesWithExt(dir, ".rs") {
+		if fileExists(filepath.Join(dir, "main.rs")) {
+			return BuildTarget{
+				Type:        ProjectRust,
+				Command:     "rustc -g main.rs -o main",
+				Description: "Rust build (main.rs -> main)",
+			}
+		}
+		return BuildTarget{
+			Type:        ProjectRust,
+			Command:     "cargo build",
+			Description: "Cargo build (.rs files found)",
+		}
+	}
+
+	// 6. Check for C/C++ files
 	if activeFile != "" && (filepath.Ext(activeFile) == ".c" || filepath.Ext(activeFile) == ".cpp") {
 		base := filepath.Base(activeFile)
 		outName := base[:len(base)-len(filepath.Ext(base))]
@@ -96,7 +138,7 @@ func DetectBuildTarget(dir string, activeFile string) BuildTarget {
 		}
 	}
 
-	// 5. Fallback
+	// 7. Fallback
 	return BuildTarget{
 		Type:        ProjectUnknown,
 		Command:     "go build .",
@@ -144,8 +186,30 @@ func DetectRunTarget(dir string, activeFile string) RunTarget {
 			}
 		}
 
-		// 2. Compiled source files: strip extension to run resulting binary
-		if ext == ".go" || ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" || ext == ".rs" {
+		// 2. Rust file
+		if ext == ".rs" {
+			if fileExists(filepath.Join(dir, "Cargo.toml")) {
+				return RunTarget{
+					Command:     "cargo run",
+					Description: "Cargo run (cargo run)",
+				}
+			}
+			strippedName := base[:len(base)-len(ext)]
+			relDir := filepath.Dir(slashRelPath)
+			var binCmd string
+			if relDir == "." || relDir == "" {
+				binCmd = "./" + strippedName
+			} else {
+				binCmd = "./" + relDir + "/" + strippedName
+			}
+			return RunTarget{
+				Command:     binCmd,
+				Description: "Run binary (" + binCmd + ")",
+			}
+		}
+
+		// 3. Compiled source files (C, C++, Go): strip extension to run resulting binary
+		if ext == ".go" || ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" {
 			strippedName := base[:len(base)-len(ext)]
 			relDir := filepath.Dir(slashRelPath)
 
@@ -162,7 +226,7 @@ func DetectRunTarget(dir string, activeFile string) RunTarget {
 			}
 		}
 
-		// 3. Already executable binary
+		// 4. Already executable binary
 		if info, err := os.Stat(activeFile); err == nil && !info.IsDir() {
 			if info.Mode().Perm()&0111 != 0 {
 				cmd := slashRelPath
@@ -177,7 +241,14 @@ func DetectRunTarget(dir string, activeFile string) RunTarget {
 		}
 	}
 
-	// 4. Workspace fallbacks
+	// 5. Workspace fallbacks
+	if fileExists(filepath.Join(dir, "Cargo.toml")) {
+		return RunTarget{
+			Command:     "cargo run",
+			Description: "Cargo run (Cargo.toml detected)",
+		}
+	}
+
 	if fileExists(filepath.Join(dir, "Makefile")) || fileExists(filepath.Join(dir, "makefile")) {
 		return RunTarget{
 			Command:     "make run",

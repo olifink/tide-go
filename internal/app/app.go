@@ -154,7 +154,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Console.IsRunning = false
 		m.ActivePane = PaneConsole
 		m.updateFocus()
-		isBuild := strings.HasPrefix(msg.Command, "go build") || strings.HasPrefix(msg.Command, "make") || strings.HasPrefix(msg.Command, "gcc") || strings.HasPrefix(msg.Command, "g++")
+		isBuild := strings.HasPrefix(msg.Command, "go build") || strings.HasPrefix(msg.Command, "make") || strings.HasPrefix(msg.Command, "gcc") || strings.HasPrefix(msg.Command, "g++") || strings.HasPrefix(msg.Command, "cargo build") || strings.HasPrefix(msg.Command, "rustc")
 		m.Console.AddCommandResult(msg, isBuild)
 		m.Diagnostics = msg.Diagnostics
 		m.Editor.SetDiagnostics(m.Diagnostics)

@@ -17,13 +17,19 @@ type Diagnostic struct {
 	Raw      string `json:"raw"`
 }
 
-// Regex patterns for Go and C (GCC/Clang) compiler errors.
+// Regex patterns for compiler errors across Go, C/C++, Rust, and generic formats.
 var (
 	// Go compiler format: filename.go:line:col: message or filename.go:line: message
 	goErrorRegex = regexp.MustCompile(`(?m)^([a-zA-Z0-9_.\-\\/]+\.go):(\d+)(?::(\d+))?:\s*(.+)$`)
 
 	// C/C++ compiler format: filename.c:line:col: (fatal )?error|warning|note: message
 	cErrorRegex = regexp.MustCompile(`(?m)^([a-zA-Z0-9_.\-\\/]+\.[ch](?:pp|xx|\+\+)?):(\d+)(?::(\d+))?:\s*(?:fatal\s+)?(error|warning|note):\s*(.+)$`)
+
+	// Rust compiler multi-line format:
+	// error[E0425]: cannot find value
+	//  --> src/main.rs:2:5
+	rustHeaderRegex = regexp.MustCompile(`^(error|warning|note)(?:\[E\d+\])?:\s*(.+)$`)
+	rustLocRegex    = regexp.MustCompile(`^-->\s*([a-zA-Z0-9_.\-\\/]+\.[a-zA-Z0-9_]+):(\d+):(\d+)`)
 
 	// Generic format: filename.ext:line:col: message or filename.ext:line: message
 	genericErrorRegex = regexp.MustCompile(`(?m)^([a-zA-Z0-9_.\-\\/]+\.[a-zA-Z0-9_]+):(\d+)(?::(\d+))?:\s*(?:(error|warning|note):\s*)?(.+)$`)
@@ -34,15 +40,47 @@ func ParseOutput(output string) []Diagnostic {
 	var diagnostics []Diagnostic
 	seen := make(map[string]bool)
 
+	var pendingRustSeverity string
+	var pendingRustMsg string
+
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+		trimmedLine := strings.TrimSpace(line)
+		if trimmedLine == "" {
+			continue
+		}
+
+		// Check for Rust header line: error[E0425]: message
+		if match := rustHeaderRegex.FindStringSubmatch(trimmedLine); match != nil {
+			pendingRustSeverity = strings.ToLower(match[1])
+			pendingRustMsg = match[2]
+			continue
+		}
+
+		// Check for Rust location pointer: --> src/main.rs:2:5
+		if match := rustLocRegex.FindStringSubmatch(trimmedLine); match != nil && pendingRustMsg != "" {
+			lineNum, _ := strconv.Atoi(match[2])
+			colNum, _ := strconv.Atoi(match[3])
+			file := filepath.Clean(match[1])
+			key := file + ":" + match[2] + ":" + pendingRustMsg
+			if !seen[key] {
+				seen[key] = true
+				diagnostics = append(diagnostics, Diagnostic{
+					File:     file,
+					Line:     lineNum,
+					Col:      colNum,
+					Severity: pendingRustSeverity,
+					Message:  pendingRustMsg,
+					Raw:      trimmedLine,
+				})
+			}
+			pendingRustMsg = ""
+			pendingRustSeverity = ""
 			continue
 		}
 
 		// Try C/C++ error format first (more specific with severity)
-		if match := cErrorRegex.FindStringSubmatch(line); match != nil {
+		if match := cErrorRegex.FindStringSubmatch(trimmedLine); match != nil {
 			lineNum, _ := strconv.Atoi(match[2])
 			colNum := 0
 			if match[3] != "" {
@@ -59,14 +97,14 @@ func ParseOutput(output string) []Diagnostic {
 					Col:      colNum,
 					Severity: severity,
 					Message:  msg,
-					Raw:      line,
+					Raw:      trimmedLine,
 				})
 			}
 			continue
 		}
 
 		// Try Go error format
-		if match := goErrorRegex.FindStringSubmatch(line); match != nil {
+		if match := goErrorRegex.FindStringSubmatch(trimmedLine); match != nil {
 			lineNum, _ := strconv.Atoi(match[2])
 			colNum := 0
 			if match[3] != "" {
@@ -82,14 +120,14 @@ func ParseOutput(output string) []Diagnostic {
 					Col:      colNum,
 					Severity: "error",
 					Message:  msg,
-					Raw:      line,
+					Raw:      trimmedLine,
 				})
 			}
 			continue
 		}
 
 		// Try Generic error format if it looks like a diagnostic
-		if match := genericErrorRegex.FindStringSubmatch(line); match != nil {
+		if match := genericErrorRegex.FindStringSubmatch(trimmedLine); match != nil {
 			lineNum, _ := strconv.Atoi(match[2])
 			colNum := 0
 			if match[3] != "" {
@@ -109,7 +147,7 @@ func ParseOutput(output string) []Diagnostic {
 					Col:      colNum,
 					Severity: severity,
 					Message:  msg,
-					Raw:      line,
+					Raw:      trimmedLine,
 				})
 			}
 		}

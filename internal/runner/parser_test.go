@@ -49,6 +49,30 @@ src/util.c:20:1: fatal error: stdio.h: No such file or directory
 	}
 }
 
+func TestParseOutputRust(t *testing.T) {
+	output := `
+error[E0425]: cannot find value 'x' in this scope
+ --> src/main.rs:5:10
+  |
+5 |     let y = x + 1;
+  |             ^ not found in this scope
+
+warning: unused variable: 'z'
+ --> src/main.rs:8:9
+`
+	diags := ParseOutput(output)
+	if len(diags) != 2 {
+		t.Fatalf("expected 2 diagnostics for Rust, got %d", len(diags))
+	}
+
+	if diags[0].Severity != "error" || diags[0].File != "src/main.rs" || diags[0].Line != 5 || diags[0].Col != 10 {
+		t.Errorf("unexpected rust diag[0]: %+v", diags[0])
+	}
+	if diags[1].Severity != "warning" || diags[1].File != "src/main.rs" || diags[1].Line != 8 || diags[1].Col != 9 {
+		t.Errorf("unexpected rust diag[1]: %+v", diags[1])
+	}
+}
+
 func TestMatchesFile(t *testing.T) {
 	if !MatchesFile("main.go", "main.go") {
 		t.Errorf("expected match for main.go and main.go")
