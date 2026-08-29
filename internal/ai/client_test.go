@@ -19,6 +19,9 @@ func TestBuildPromptQA(t *testing.T) {
 	if !strings.Contains(prompt, "main.go") {
 		t.Errorf("prompt missing active file name")
 	}
+	if !strings.Contains(prompt, "Language: Go") {
+		t.Errorf("prompt missing language indicator")
+	}
 	if !strings.Contains(prompt, "panic(\"err\")") {
 		t.Errorf("prompt missing code content")
 	}
@@ -41,7 +44,16 @@ func TestBuildPromptUpdate(t *testing.T) {
 	if !strings.Contains(prompt, "io.go") {
 		t.Errorf("update prompt missing file name")
 	}
-	if !strings.Contains(prompt, "COMPLETE, UPDATED file content") {
+	if !strings.Contains(prompt, "Language: Go") {
+		t.Errorf("update prompt missing language specification")
+	}
+	if !strings.Contains(prompt, "LANGUAGE ENFORCEMENT: The file is io.go (Go)") {
+		t.Errorf("update prompt missing strict language enforcement")
+	}
+	if !strings.Contains(prompt, "Do NOT switch to Python") {
+		t.Errorf("update prompt missing anti-language drift instruction")
+	}
+	if !strings.Contains(prompt, "COMPLETE, UPDATED Go file content") {
 		t.Errorf("update prompt missing full file instruction")
 	}
 }

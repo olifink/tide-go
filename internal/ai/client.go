@@ -29,25 +29,66 @@ type AIChunkMsg struct {
 }
 
 var (
-	filenameRegex = regexp.MustCompile(`(?i)(?:FILENAME|FILE):\s*([a-zA-Z0-9_.\-\\/]+)`)
+	filenameRegex  = regexp.MustCompile(`(?i)(?:FILENAME|FILE):\s*([a-zA-Z0-9_.\-\\/]+)`)
 	codeBlockRegex = regexp.MustCompile("(?s)```(?:[a-zA-Z0-9_\\-\\+]+)?\\r?\\n(.*?)\\r?\\n?```")
 )
 
-// BuildPrompt constructs a context-aware prompt based on the active mode.
+// detectLanguageAndTag maps file extensions to human-readable language names and markdown code block tags.
+func detectLanguageAndTag(filename string) (string, string) {
+	if filename == "" {
+		return "Plain Text", "text"
+	}
+	base := strings.ToLower(filepath.Base(filename))
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	switch {
+	case ext == ".go":
+		return "Go", "go"
+	case ext == ".c" || ext == ".h":
+		return "C", "c"
+	case ext == ".cpp" || ext == ".cc" || ext == ".cxx" || ext == ".hpp":
+		return "C++", "cpp"
+	case ext == ".rs":
+		return "Rust", "rust"
+	case ext == ".py":
+		return "Python", "python"
+	case ext == ".js":
+		return "JavaScript", "javascript"
+	case ext == ".ts":
+		return "TypeScript", "typescript"
+	case ext == ".sh" || ext == ".bash":
+		return "Shell", "bash"
+	case ext == ".json":
+		return "JSON", "json"
+	case ext == ".yaml" || ext == ".yml":
+		return "YAML", "yaml"
+	case ext == ".md":
+		return "Markdown", "markdown"
+	case base == "makefile":
+		return "Makefile", "makefile"
+	default:
+		tag := strings.TrimPrefix(ext, ".")
+		if tag == "" {
+			tag = "text"
+		}
+		return strings.ToUpper(tag), tag
+	}
+}
+
+// BuildPrompt constructs a context-aware prompt based on the active mode with explicit language enforcement.
 func BuildPrompt(mode AIMode, userQuery string, activeFile string, codeContent string, lastCommand string, lastOutput string, fileList []string) string {
 	var sb strings.Builder
+	langName, langTag := detectLanguageAndTag(activeFile)
 
 	switch mode {
 	case ModeUpdateFile:
 		sb.WriteString("You are an expert software developer embedded in the TIDE terminal IDE.\n")
-		sb.WriteString("Your task is to modify the active file based on the user's instructions.\n\n")
+		sb.WriteString(fmt.Sprintf("Your task is to modify the active %s source file (%s) based on the user's instructions.\n\n", langName, filepath.Base(activeFile)))
+
+		sb.WriteString(fmt.Sprintf("### TARGET FILE SPECIFICATION:\n- Filename: %s\n- Language: %s\n- Markdown Tag: ```%s\n\n", filepath.Base(activeFile), langName, langTag))
 
 		if activeFile != "" && codeContent != "" {
-			ext := strings.TrimPrefix(filepath.Ext(activeFile), ".")
-			if ext == "" {
-				ext = "text"
-			}
-			sb.WriteString(fmt.Sprintf("### Current File: %s\n```%s\n%s\n```\n\n", filepath.Base(activeFile), ext, codeContent))
+			sb.WriteString(fmt.Sprintf("### CURRENT %s FILE CONTENT (%s):\n```%s\n%s\n```\n\n", strings.ToUpper(langName), filepath.Base(activeFile), langTag, codeContent))
 		}
 
 		if lastOutput != "" {
@@ -61,9 +102,10 @@ func BuildPrompt(mode AIMode, userQuery string, activeFile string, codeContent s
 		sb.WriteString("### User Edit Request:\n")
 		sb.WriteString(userQuery)
 		sb.WriteString("\n\n### CRITICAL INSTRUCTIONS:\n")
-		sb.WriteString("1. Return the COMPLETE, UPDATED file content in a single markdown code block.\n")
-		sb.WriteString("2. Do NOT use ellipses (...) or placeholders. Output the full file ready to be saved.\n")
-		sb.WriteString("3. Provide a brief explanation of the changes before or after the code block.\n")
+		sb.WriteString(fmt.Sprintf("1. LANGUAGE ENFORCEMENT: The file is %s (%s). All code MUST be written strictly in valid %s syntax. Do NOT switch to Python or any other programming language.\n", filepath.Base(activeFile), langName, langName))
+		sb.WriteString(fmt.Sprintf("2. Return the COMPLETE, UPDATED %s file content in a single ```%s markdown code block.\n", langName, langTag))
+		sb.WriteString("3. Do NOT use ellipses (...), truncated functions, or placeholders. Output the full file ready to be saved.\n")
+		sb.WriteString("4. Provide a brief explanation of the changes before or after the code block.\n")
 
 	case ModeGenerateFile:
 		sb.WriteString("You are an expert software developer embedded in the TIDE terminal IDE.\n")
@@ -77,18 +119,15 @@ func BuildPrompt(mode AIMode, userQuery string, activeFile string, codeContent s
 		sb.WriteString(userQuery)
 		sb.WriteString("\n\n### CRITICAL INSTRUCTIONS:\n")
 		sb.WriteString("1. On the first line, specify the recommended filename in this exact format: `FILENAME: filename.ext`\n")
-		sb.WriteString("2. Output the COMPLETE new file code inside a single markdown code block.\n")
-		sb.WriteString("3. Ensure the code is complete, valid, and fully implemented without placeholders.\n")
+		sb.WriteString("2. Match the language and file extension to the request and project ecosystem (e.g. use .go for Go projects, .c/.h for C projects).\n")
+		sb.WriteString("3. Output the COMPLETE new file code inside a single markdown code block with the appropriate language tag.\n")
+		sb.WriteString("4. Ensure the code is complete, valid, and fully implemented without placeholders or pseudocode.\n")
 
 	default: // ModeConsoleQA
 		sb.WriteString("You are an expert software developer and debugging assistant inside the TIDE terminal IDE.\n\n")
 
 		if activeFile != "" && codeContent != "" {
-			ext := strings.TrimPrefix(filepath.Ext(activeFile), ".")
-			if ext == "" {
-				ext = "text"
-			}
-			sb.WriteString(fmt.Sprintf("### Active File: %s\n```%s\n%s\n```\n\n", filepath.Base(activeFile), ext, codeContent))
+			sb.WriteString(fmt.Sprintf("### Active File: %s (Language: %s)\n```%s\n%s\n```\n\n", filepath.Base(activeFile), langName, langTag, codeContent))
 		}
 
 		if lastOutput != "" {
@@ -101,7 +140,7 @@ func BuildPrompt(mode AIMode, userQuery string, activeFile string, codeContent s
 
 		sb.WriteString("### User Request:\n")
 		sb.WriteString(userQuery)
-		sb.WriteString("\n\nPlease provide a clear, concise, and helpful response. If explaining code fixes, provide the corrected code snippet.")
+		sb.WriteString(fmt.Sprintf("\n\nPlease provide a clear, concise, and helpful response. When providing code fixes or snippets, match the language of the active file (%s).", langName))
 	}
 
 	return sb.String()
