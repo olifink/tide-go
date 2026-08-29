@@ -3,6 +3,7 @@ package filetree
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +41,42 @@ func TestFileTreeOperations(t *testing.T) {
 	ft.SelectFile(mainGoPath)
 	if ft.ActiveFile != mainGoPath {
 		t.Errorf("expected active file %s, got %s", mainGoPath, ft.ActiveFile)
+	}
+}
+
+func TestFileTreeExecutableDetection(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-exec-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Regular text file (0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "normal.txt"), []byte("hello"), 0644)
+
+	// Executable binary / script (0755)
+	execPath := filepath.Join(tmpDir, "build.sh")
+	_ = os.WriteFile(execPath, []byte("#!/bin/sh\necho hi"), 0755)
+
+	ft := New(tmpDir, 40, 20)
+	ft.SelectFile(execPath)
+
+	item := ft.SelectedItem()
+	if item == nil {
+		t.Fatalf("expected to select executable item")
+	}
+	if !item.IsExecutable {
+		t.Errorf("expected item.IsExecutable to be true for 0755 file")
+	}
+
+	path, isFile, isExec := ft.ToggleCurrent()
+	if !isFile || !isExec || path != execPath {
+		t.Errorf("expected isFile=true, isExec=true from ToggleCurrent, got isFile=%v, isExec=%v", isFile, isExec)
+	}
+
+	// Verify view renders * prefix
+	view := ft.View()
+	if !strings.Contains(view, "* build.sh") {
+		t.Errorf("expected view to contain '* build.sh', got:\n%s", view)
 	}
 }

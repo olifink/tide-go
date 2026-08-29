@@ -348,3 +348,42 @@ func TestAppGeminiGenerateFile(t *testing.T) {
 		t.Errorf("expected editor to open math.go, got: %s", m.Editor.Buffer.FileName())
 	}
 }
+
+func TestAppFileTreeEnterOnExecutableRunsShell(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-run-exec-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	execPath := filepath.Join(tmpDir, "myscript.sh")
+	_ = os.WriteFile(execPath, []byte("#!/bin/sh\necho test-output\n"), 0755)
+
+	m := InitialModel(tmpDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Switch to Files pane and select the executable
+	m.ActivePane = PaneFiles
+	m.FileTree.SelectFile(execPath)
+	m.updateFocus()
+
+	// Press Enter on the executable item
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(Model)
+
+	// Should switch active pane to Console and start running
+	if m.ActivePane != PaneConsole {
+		t.Errorf("expected active pane to switch to PaneConsole, got %d", m.ActivePane)
+	}
+	if !m.Console.IsRunning {
+		t.Errorf("expected console to be running")
+	}
+	if !strings.Contains(m.Console.RunningTitle, "myscript.sh") {
+		t.Errorf("expected running title to contain myscript.sh, got: %s", m.Console.RunningTitle)
+	}
+	if cmd == nil {
+		t.Errorf("expected command returned for execution")
+	}
+}

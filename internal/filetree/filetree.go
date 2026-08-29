@@ -12,12 +12,13 @@ import (
 
 // FileItem represents a file or directory entry in the tree.
 type FileItem struct {
-	Name     string
-	Path     string
-	IsDir    bool
-	Depth    int
-	Expanded bool
-	Children []*FileItem
+	Name         string
+	Path         string
+	IsDir        bool
+	IsExecutable bool
+	Depth        int
+	Expanded     bool
+	Children     []*FileItem
 }
 
 // Model represents the file tree component.
@@ -97,13 +98,24 @@ func (m *Model) buildTree(item *FileItem, expandedPaths map[string]bool, depth i
 
 		subPath := filepath.Join(item.Path, name)
 		isDir := entry.IsDir()
+		isExec := false
+
+		if !isDir {
+			if info, err := entry.Info(); err == nil {
+				// Check for executable bit in Unix permissions
+				if info.Mode().Perm()&0111 != 0 {
+					isExec = true
+				}
+			}
+		}
 
 		child := &FileItem{
-			Name:     name,
-			Path:     subPath,
-			IsDir:    isDir,
-			Depth:    depth + 1,
-			Expanded: expandedPaths[subPath],
+			Name:         name,
+			Path:         subPath,
+			IsDir:        isDir,
+			IsExecutable: isExec,
+			Depth:        depth + 1,
+			Expanded:     expandedPaths[subPath],
 		}
 
 		if isDir {
@@ -192,11 +204,11 @@ func (m *Model) SelectedItem() *FileItem {
 	return nil
 }
 
-// ToggleCurrent toggles expansion if directory, or returns true if file.
-func (m *Model) ToggleCurrent() (selectedFile string, isFile bool) {
+// ToggleCurrent toggles expansion if directory, or returns file path, isFile, and isExecutable.
+func (m *Model) ToggleCurrent() (selectedFile string, isFile bool, isExec bool) {
 	item := m.SelectedItem()
 	if item == nil {
-		return "", false
+		return "", false, false
 	}
 	if item.IsDir {
 		item.Expanded = !item.Expanded
@@ -206,9 +218,9 @@ func (m *Model) ToggleCurrent() (selectedFile string, isFile bool) {
 			m.buildTree(item, dummyMap, item.Depth)
 		}
 		m.rebuildVisible()
-		return "", false
+		return "", false, false
 	}
-	return item.Path, true
+	return item.Path, true, item.IsExecutable
 }
 
 // SelectFile searches for the file path in the tree and moves the cursor to it.
@@ -228,7 +240,7 @@ func (m *Model) SetSize(width, height int) {
 	m.Height = height
 }
 
-// View renders the file tree.
+// View renders the file tree with * prefix for executable binaries.
 func (m *Model) View() string {
 	targetHeight := max(1, m.Height)
 	targetWidth := max(10, m.Width)
@@ -273,6 +285,8 @@ func (m *Model) View() string {
 			} else {
 				icon = "▸ "
 			}
+		} else if item.IsExecutable {
+			icon = "* "
 		} else {
 			icon = "  "
 		}
@@ -300,6 +314,10 @@ func (m *Model) View() string {
 		} else if item.IsDir {
 			style = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#8BE9FD")).
+				Bold(true)
+		} else if item.IsExecutable {
+			style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#50FA7B")).
 				Bold(true)
 		} else {
 			style = lipgloss.NewStyle().
