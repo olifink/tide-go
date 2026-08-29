@@ -162,7 +162,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Diagnostics) > 0 {
 			m.StatusMessage = fmt.Sprintf("Build finished with %d diagnostic(s)", len(msg.Diagnostics))
 		} else if msg.ExitCode == 0 {
-			m.StatusMessage = "Build/Run succeeded!"
+			if isBuild {
+				m.StatusMessage = "Build succeeded! (Press ^R to run)"
+			} else {
+				m.StatusMessage = "Run finished successfully (exit 0)"
+			}
 		} else {
 			m.StatusMessage = fmt.Sprintf("Process exited with code %d", msg.ExitCode)
 		}
@@ -365,7 +369,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "ctrl+r":
+		case "ctrl+b":
 			if m.Editor.Mode == editor.ModeEdit {
 				m.Editor.ToggleMode()
 			}
@@ -379,6 +383,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Console.IsRunning = true
 			m.Console.RunningTitle = cmdToRun
 			m.StatusMessage = fmt.Sprintf("Building (%s)...", target.Description)
+			return m, runner.RunCommandCmd(m.WorkingDir, cmdToRun)
+
+		case "ctrl+r":
+			if m.Editor.Mode == editor.ModeEdit {
+				m.Editor.ToggleMode()
+			}
+			target := runner.DetectRunTarget(m.WorkingDir, m.Editor.Buffer.FilePath)
+			cmdToRun := target.Command
+			if cmdToRun == "" {
+				cmdToRun = "./main"
+			}
+			m.ActivePane = PaneConsole
+			m.updateFocus()
+			m.Console.IsRunning = true
+			m.Console.RunningTitle = cmdToRun
+			m.StatusMessage = fmt.Sprintf("Running (%s)...", target.Description)
 			return m, runner.RunCommandCmd(m.WorkingDir, cmdToRun)
 
 		case "ctrl+x":
@@ -873,7 +893,8 @@ func (m Model) View() string {
 		{"^N", "New"},
 		{"^E", "Edit"},
 		{"^S", "Save"},
-		{"^R", "Run/Build"},
+		{"^B", "Build"},
+		{"^R", "Run"},
 		{"^X", "Shell"},
 		{"^G", "Gemini"},
 		{"^Q", "Quit"},

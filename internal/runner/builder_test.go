@@ -3,6 +3,7 @@ package runner
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,5 +60,53 @@ func TestDetectBuildTargetC(t *testing.T) {
 	}
 	if target.Command == "" {
 		t.Errorf("expected non-empty command for C")
+	}
+}
+
+func TestDetectRunTarget(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-run-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// 1. Python script
+	pyFile := filepath.Join(tmpDir, "script.py")
+	_ = os.WriteFile(pyFile, []byte("print('hi')"), 0644)
+	rtPy := DetectRunTarget(tmpDir, pyFile)
+	if !strings.HasPrefix(rtPy.Command, "python3 ") {
+		t.Errorf("expected python3 runner for .py, got: %s", rtPy.Command)
+	}
+
+	// 2. Ruby script
+	rbFile := filepath.Join(tmpDir, "app.rb")
+	_ = os.WriteFile(rbFile, []byte("puts 'hi'"), 0644)
+	rtRb := DetectRunTarget(tmpDir, rbFile)
+	if !strings.HasPrefix(rtRb.Command, "ruby ") {
+		t.Errorf("expected ruby runner for .rb, got: %s", rtRb.Command)
+	}
+
+	// 3. C source file -> stripped binary
+	cFile := filepath.Join(tmpDir, "server.c")
+	_ = os.WriteFile(cFile, []byte("int main(){}"), 0644)
+	rtC := DetectRunTarget(tmpDir, cFile)
+	if rtC.Command != "./server" {
+		t.Errorf("expected './server' for server.c, got: %s", rtC.Command)
+	}
+
+	// 4. Go source file -> stripped binary
+	goFile := filepath.Join(tmpDir, "main.go")
+	_ = os.WriteFile(goFile, []byte("package main"), 0644)
+	rtGo := DetectRunTarget(tmpDir, goFile)
+	if rtGo.Command != "./main" {
+		t.Errorf("expected './main' for main.go, got: %s", rtGo.Command)
+	}
+
+	// 5. Executable binary
+	binFile := filepath.Join(tmpDir, "mytool")
+	_ = os.WriteFile(binFile, []byte("ELF binary"), 0755)
+	rtBin := DetectRunTarget(tmpDir, binFile)
+	if rtBin.Command != "./mytool" {
+		t.Errorf("expected './mytool' for binary, got: %s", rtBin.Command)
 	}
 }

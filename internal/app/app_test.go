@@ -257,7 +257,7 @@ func TestAppShiftEscFocusesConsole(t *testing.T) {
 	}
 }
 
-func TestAppBuildFocusesConsole(t *testing.T) {
+func TestAppBuildAndRunFocusConsole(t *testing.T) {
 	m := InitialModel(".")
 	m.Width = 100
 	m.Height = 30
@@ -266,8 +266,23 @@ func TestAppBuildFocusesConsole(t *testing.T) {
 	m.ActivePane = PaneEditor
 	m.updateFocus()
 
-	// Trigger Build with Ctrl+R
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	// Trigger Build with Ctrl+B
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	m = newM.(Model)
+
+	if m.ActivePane != PaneConsole {
+		t.Errorf("expected Ctrl+B to switch active pane to PaneConsole, got %d", m.ActivePane)
+	}
+	if !m.Console.Focused {
+		t.Errorf("expected console to be focused")
+	}
+
+	// Reset focus to Editor
+	m.ActivePane = PaneEditor
+	m.updateFocus()
+
+	// Trigger Run with Ctrl+R
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
 	m = newM.(Model)
 
 	if m.ActivePane != PaneConsole {

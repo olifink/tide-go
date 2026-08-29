@@ -23,7 +23,8 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Ctrl+N` | New File | Global | Prompts for a filename and opens it in the editor |
 | `Ctrl+E` | Toggle View / Edit Mode | Global | Switches between syntax-highlighted View mode and active Textarea editing |
 | `Ctrl+S` | Save File | Global | Saves modified buffer to disk |
-| `Ctrl+R` | Run / Build | Global | Auto-detects build command (`go build .`, `make`, `gcc`) and runs asynchronously |
+| `Ctrl+B` | Build Project | Global | Auto-detects build command (`go build .`, `make`, `gcc`) and compiles asynchronously |
+| `Ctrl+R` | Run Program | Global | Runs executable: strips extension for `.go`/`.c` (`./main`, `./app`) or executes source for `.py`/`.rb`/`.sh` (`python3`, `ruby`, `bash`) |
 | `Ctrl+X` | Shell Command | Global | Opens shell execution bar (`$ `) to run arbitrary CLI commands |
 | `Ctrl+G` | Gemini AI Assistant | Global | Context-aware AI: **Update File** (in Editor), **Generate File** (in Files), or **Q&A** (in Console) |
 | `Ctrl+Q` | Quit | Global | Exits TIDE |

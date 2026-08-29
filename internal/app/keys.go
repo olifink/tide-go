@@ -8,7 +8,8 @@ type KeyMap struct {
 	NewFile      key.Binding
 	ToggleEdit   key.Binding
 	Save         key.Binding
-	RunBuild     key.Binding
+	Build        key.Binding
+	Run          key.Binding
 	ShellCommand key.Binding
 	Gemini       key.Binding
 	Quit         key.Binding
@@ -37,9 +38,13 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+s"),
 			key.WithHelp("^S", "Save"),
 		),
-		RunBuild: key.NewBinding(
+		Build: key.NewBinding(
+			key.WithKeys("ctrl+b"),
+			key.WithHelp("^B", "Build"),
+		),
+		Run: key.NewBinding(
 			key.WithKeys("ctrl+r"),
-			key.WithHelp("^R", "Run/Build"),
+			key.WithHelp("^R", "Run"),
 		),
 		ShellCommand: key.NewBinding(
 			key.WithKeys("ctrl+x"),
