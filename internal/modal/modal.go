@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"tide/internal/ai"
 )
 
 // ModalType specifies the active dialog.
@@ -28,6 +29,7 @@ type Model struct {
 	Width       int
 	Height      int
 	Active      bool
+	AIMode      ai.AIMode
 }
 
 // New creates an unactivated modal dialog.
@@ -67,20 +69,34 @@ func (m *Model) OpenShellCommand(defaultCmd string) {
 	m.Active = true
 }
 
-// OpenGeminiPrompt activates the Gemini assistant prompt dialog.
-func (m *Model) OpenGeminiPrompt(hasContext bool) {
+// OpenGeminiPrompt activates the Gemini assistant prompt dialog according to active pane mode.
+func (m *Model) OpenGeminiPrompt(mode ai.AIMode, activeFileName string) {
 	m.Type = GeminiPrompt
-	m.Title = "Ask Gemini AI Assistant"
-	if hasContext {
-		m.Description = "Ask a question (Active file & compiler output attached):"
-	} else {
-		m.Description = "Ask a question:"
-	}
+	m.AIMode = mode
 	m.Input.SetValue("")
-	m.Input.Placeholder = "e.g. Why is this error happening? How to fix it?"
 	m.Input.EchoMode = textinput.EchoNormal
 	m.Input.Focus()
 	m.Active = true
+
+	switch mode {
+	case ai.ModeUpdateFile:
+		if activeFileName == "" {
+			activeFileName = "current file"
+		}
+		m.Title = fmt.Sprintf("✦ Gemini: Update %s", activeFileName)
+		m.Description = fmt.Sprintf("Describe changes or fixes to apply to %s (applied directly to editor):", activeFileName)
+		m.Input.Placeholder = "e.g. Add error handling, refactor function X, fix bug"
+
+	case ai.ModeGenerateFile:
+		m.Title = "✦ Gemini: Generate New File"
+		m.Description = "Describe new file to create (e.g. \"server.go: REST API with health check\"):"
+		m.Input.Placeholder = "filename.ext: description of file to generate"
+
+	default: // ai.ModeConsoleQA
+		m.Title = "✦ Gemini: Ask Assistant"
+		m.Description = "Ask a question or explain errors (answers stream to console):"
+		m.Input.Placeholder = "e.g. Why is this error happening? How does this work?"
+	}
 }
 
 // OpenAPIKey activates the Gemini API key input dialog.

@@ -44,6 +44,8 @@ type Model struct {
 	StatusMessage string
 	AIChannel     chan ai.AIChunkMsg
 	pendingAIQ    string
+	activeAIMode  ai.AIMode
+	aiResponse    strings.Builder
 }
 
 // InitialModel initializes the TIDE application model.
@@ -178,12 +180,68 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.StatusMessage = "Gemini request failed"
 			return m, nil
 		}
+
 		if msg.Done {
 			m.Console.IsRunning = false
-			m.StatusMessage = "Gemini finished response"
+			rawResp := m.aiResponse.String()
+
+			switch msg.Mode {
+			case ai.ModeUpdateFile:
+				_, code, explanation := ai.ExtractCodeAndFile(rawResp, m.Editor.Buffer.FileName())
+				if code != "" {
+					m.Editor.Buffer.SetText(code)
+					if m.Editor.Mode == editor.ModeEdit {
+						m.Editor.Textarea.SetValue(code)
+					}
+					m.Editor.Buffer.IsModified = true
+					m.ActivePane = PaneEditor
+					m.updateFocus()
+					m.StatusMessage = fmt.Sprintf("Updated %s with Gemini changes (Press ^S to save)", m.Editor.Buffer.FileName())
+					m.Console.AddEntry(console.Entry{
+						Type:    console.TypeAI,
+						Header:  fmt.Sprintf("✓ Applied Gemini changes to %s", m.Editor.Buffer.FileName()),
+						Content: fmt.Sprintf("File updated with %d lines. Review changes in Editor and press ^S to save.\n\n%s", m.Editor.Buffer.LineCount, explanation),
+					})
+				} else {
+					m.StatusMessage = "Gemini response completed"
+				}
+
+			case ai.ModeGenerateFile:
+				defaultName := "generated.txt"
+				if m.Editor.Buffer.Language == "Go" {
+					defaultName = "generated.go"
+				} else if m.Editor.Buffer.Language == "C" {
+					defaultName = "generated.c"
+				}
+				fn, code, explanation := ai.ExtractCodeAndFile(rawResp, defaultName)
+				if code != "" {
+					targetPath := filepath.Join(m.WorkingDir, fn)
+					_ = os.MkdirAll(filepath.Dir(targetPath), 0755)
+					_ = os.WriteFile(targetPath, []byte(code), 0644)
+					m.refreshWorkspace()
+					_ = m.Editor.OpenFile(targetPath)
+					m.FileTree.SelectFile(targetPath)
+					m.ActivePane = PaneEditor
+					m.updateFocus()
+					m.StatusMessage = fmt.Sprintf("Created & opened %s", fn)
+					m.Console.AddEntry(console.Entry{
+						Type:    console.TypeAI,
+						Header:  fmt.Sprintf("✓ Created new file: %s", fn),
+						Content: fmt.Sprintf("Wrote %d lines to %s.\n\n%s", len(strings.Split(code, "\n")), fn, explanation),
+					})
+				} else {
+					m.StatusMessage = "Gemini generated response"
+				}
+
+			default: // ai.ModeConsoleQA
+				m.StatusMessage = "Gemini finished response"
+			}
+
 			m.refreshWorkspace()
 			return m, nil
 		}
+
+		m.aiResponse.WriteString(msg.Chunk)
 		m.Console.AddAIChunk(msg.Chunk, false)
 		return m, ai.ListenForAIChunk(m.AIChannel)
 
@@ -242,13 +300,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				case modal.GeminiPrompt:
 					apiKey := config.GetGeminiAPIKey(m.Config)
+					mode := m.Modal.AIMode
 					if apiKey == "" {
 						m.pendingAIQ = val
+						m.activeAIMode = mode
 						m.Modal.OpenAPIKey()
 						m.updateFocus()
 						return m, nil
 					}
-					return m, m.triggerGeminiAI(val, apiKey)
+					return m, m.triggerGeminiAI(val, apiKey, mode)
 
 				case modal.APIKey:
 					_ = config.SaveGeminiAPIKey(val)
@@ -256,8 +316,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.StatusMessage = "Gemini API key saved!"
 					if m.pendingAIQ != "" {
 						q := m.pendingAIQ
+						mode := m.activeAIMode
 						m.pendingAIQ = ""
-						return m, m.triggerGeminiAI(q, val)
+						return m, m.triggerGeminiAI(q, val, mode)
 					}
 				}
 				return m, nil
@@ -330,10 +391,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+g":
 			apiKey := config.GetGeminiAPIKey(m.Config)
+			var targetMode ai.AIMode
+			switch m.ActivePane {
+			case PaneFiles:
+				targetMode = ai.ModeGenerateFile
+			case PaneEditor:
+				if m.Editor.Buffer.IsLoaded {
+					targetMode = ai.ModeUpdateFile
+				} else {
+					targetMode = ai.ModeGenerateFile
+				}
+			default:
+				targetMode = ai.ModeConsoleQA
+			}
+
 			if apiKey == "" {
 				m.Modal.OpenAPIKey()
 			} else {
-				m.Modal.OpenGeminiPrompt(m.Editor.Buffer.IsLoaded)
+				m.Modal.OpenGeminiPrompt(targetMode, m.Editor.Buffer.FileName())
 			}
 			m.updateFocus()
 			return m, nil
@@ -433,26 +508,57 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *Model) triggerGeminiAI(userQuery string, apiKey string) tea.Cmd {
+func (m *Model) triggerGeminiAI(userQuery string, apiKey string, mode ai.AIMode) tea.Cmd {
+	if m.Editor.Mode == editor.ModeEdit {
+		m.Editor.ToggleMode()
+	}
+	m.ActivePane = PaneConsole
+	m.updateFocus()
 	m.Console.IsRunning = true
-	m.Console.RunningTitle = "Gemini AI stream..."
-	m.StatusMessage = "Asking Gemini..."
+	m.activeAIMode = mode
+	m.aiResponse.Reset()
+
+	var fileList []string
+	for _, item := range m.FileTree.VisibleItems {
+		if !item.IsDir {
+			fileList = append(fileList, item.Name)
+		}
+	}
 
 	fullPrompt := ai.BuildPrompt(
+		mode,
 		userQuery,
 		m.Editor.Buffer.FilePath,
 		m.Editor.Buffer.CurrentText,
 		m.Console.LastCommand,
 		m.Console.LastOutput,
+		fileList,
 	)
 
-	m.Console.AddAIChunk("✦ **Gemini AI:**\n\n", true)
+	var headerTitle string
+	switch mode {
+	case ai.ModeUpdateFile:
+		m.Console.RunningTitle = fmt.Sprintf("Gemini AI: Updating %s...", m.Editor.Buffer.FileName())
+		m.StatusMessage = fmt.Sprintf("Asking Gemini to update %s...", m.Editor.Buffer.FileName())
+		headerTitle = fmt.Sprintf("✦ **Gemini AI (Updating %s):**\n\n", m.Editor.Buffer.FileName())
+	case ai.ModeGenerateFile:
+		m.Console.RunningTitle = "Gemini AI: Generating new file..."
+		m.StatusMessage = "Asking Gemini to generate new file..."
+		headerTitle = "✦ **Gemini AI (Generating New File):**\n\n"
+	default:
+		m.Console.RunningTitle = "Gemini AI stream..."
+		m.StatusMessage = "Asking Gemini..."
+		headerTitle = "✦ **Gemini AI Assistant:**\n\n"
+	}
+
+	m.Console.AddAIChunk(headerTitle, true)
 
 	m.AIChannel = make(chan ai.AIChunkMsg, 32)
 	go ai.AskGeminiStream(
 		context.Background(),
 		apiKey,
 		m.Config.GeminiModel,
+		mode,
 		fullPrompt,
 		m.AIChannel,
 	)

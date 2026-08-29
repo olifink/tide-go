@@ -25,11 +25,30 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Ctrl+S` | Save File | Global | Saves modified buffer to disk |
 | `Ctrl+R` | Run / Build | Global | Auto-detects build command (`go build .`, `make`, `gcc`) and runs asynchronously |
 | `Ctrl+X` | Shell Command | Global | Opens shell execution bar (`$ `) to run arbitrary CLI commands |
-| `Ctrl+G` | Gemini AI Assistant | Global | Opens AI prompt with full buffer and compiler error context |
+| `Ctrl+G` | Gemini AI Assistant | Global | Context-aware AI: **Update File** (in Editor), **Generate File** (in Files), or **Q&A** (in Console) |
 | `Ctrl+Q` | Quit | Global | Exits TIDE |
 | `Tab` / `Shift+Tab` | Cycle Focus | Global | Cycles focus between Files, Editor, and Console panels |
 | `Esc` | Focus Editor / Cancel | Global | Focuses the Editor pane (or exits Edit mode / closes open modals) |
 | `Shift+Esc` | Focus Console | Global | Immediately switches focus to the Output / Console panel |
+
+---
+
+## ✦ Context-Aware Gemini AI Integration (`Ctrl+G`)
+
+TIDE adapts Gemini AI prompts dynamically based on your active panel:
+
+1. **In Editor (`PaneEditor`): Update Active File**
+   - Provide instructions like *"add error handling"*, *"refactor to use goroutines"*, or *"fix compiler bug"*.
+   - Gemini returns the full updated code, loads it directly into your active buffer, and marks it as modified (`[MOD]`).
+   - Review changes and press `Ctrl+S` to save.
+
+2. **In Files Sidebar (`PaneFiles`): Generate New File**
+   - Request new components like *"server.go: REST API with health check"* or *"vector.c: 3D vector math functions"*.
+   - Gemini creates the file on disk, refreshes the file explorer, and opens the new file in the editor ready to run.
+
+3. **In Output Console (`PaneConsole`): Ask Assistant (Q&A)**
+   - Ask general coding questions, explain architectural concepts, or inspect compiler errors.
+   - Responses stream in real-time as rich Markdown inside the Console viewport.
 
 ---
 

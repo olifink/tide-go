@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"tide/internal/ai"
 	"tide/internal/modal"
 	"tide/internal/runner"
 )
@@ -274,5 +275,76 @@ func TestAppBuildFocusesConsole(t *testing.T) {
 	}
 	if !m.Console.Focused {
 		t.Errorf("expected console to be focused")
+	}
+}
+
+func TestAppGeminiUpdateFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-ai-update-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	filePath := filepath.Join(tmpDir, "main.go")
+	_ = os.WriteFile(filePath, []byte("package main\n\nfunc main() {}\n"), 0644)
+
+	m := InitialModel(filePath)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Simulate streaming chunks for file update
+	chunk1 := "Here is the refactored code:\n```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, Gemini!\")\n}\n```\nAdded greeting."
+	newM, _ := m.Update(ai.AIChunkMsg{Chunk: chunk1, Mode: ai.ModeUpdateFile})
+	m = newM.(Model)
+
+	// Simulate stream completion
+	newM, _ = m.Update(ai.AIChunkMsg{Done: true, Mode: ai.ModeUpdateFile})
+	m = newM.(Model)
+
+	// Verify buffer text was updated
+	if !strings.Contains(m.Editor.Buffer.CurrentText, "Hello, Gemini!") {
+		t.Errorf("expected buffer to contain updated code, got: %s", m.Editor.Buffer.CurrentText)
+	}
+	if !m.Editor.Buffer.IsModified {
+		t.Errorf("expected buffer to be marked modified")
+	}
+	if m.ActivePane != PaneEditor {
+		t.Errorf("expected editor pane active after Gemini update")
+	}
+}
+
+func TestAppGeminiGenerateFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-ai-gen-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	m := InitialModel(tmpDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Simulate streaming chunks for new file generation
+	chunk1 := "FILENAME: math.go\n\n```go\npackage main\n\nfunc Multiply(a, b int) int {\n    return a * b\n}\n```\nImplemented math functions."
+	newM, _ := m.Update(ai.AIChunkMsg{Chunk: chunk1, Mode: ai.ModeGenerateFile})
+	m = newM.(Model)
+
+	// Simulate stream completion
+	newM, _ = m.Update(ai.AIChunkMsg{Done: true, Mode: ai.ModeGenerateFile})
+	m = newM.(Model)
+
+	// Verify new file was written and opened
+	genFilePath := filepath.Join(tmpDir, "math.go")
+	data, err := os.ReadFile(genFilePath)
+	if err != nil {
+		t.Fatalf("expected generated file on disk: %v", err)
+	}
+	if !strings.Contains(string(data), "func Multiply") {
+		t.Errorf("expected generated file to contain code, got: %s", string(data))
+	}
+	if m.Editor.Buffer.FileName() != "math.go" {
+		t.Errorf("expected editor to open math.go, got: %s", m.Editor.Buffer.FileName())
 	}
 }

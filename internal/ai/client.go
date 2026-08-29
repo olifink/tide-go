@@ -4,10 +4,20 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"google.golang.org/genai"
+)
+
+// AIMode defines the purpose of the Gemini prompt.
+type AIMode int
+
+const (
+	ModeConsoleQA    AIMode = iota // General Q&A and explanations streamed to Console
+	ModeGenerateFile               // Generate and create a new file on disk
+	ModeUpdateFile                 // Modify the currently open editor buffer
 )
 
 // AIChunkMsg is sent to the Bubbletea event loop as streaming chunks arrive from Gemini.
@@ -15,43 +25,122 @@ type AIChunkMsg struct {
 	Chunk string
 	Done  bool
 	Err   error
+	Mode  AIMode
 }
 
-// BuildPrompt constructs a context-rich prompt for Gemini including the active buffer and compiler errors.
-func BuildPrompt(userQuery string, activeFile string, codeContent string, lastCommand string, lastOutput string) string {
+var (
+	filenameRegex = regexp.MustCompile(`(?i)(?:FILENAME|FILE):\s*([a-zA-Z0-9_.\-\\/]+)`)
+	codeBlockRegex = regexp.MustCompile("(?s)```(?:[a-zA-Z0-9_\\-\\+]+)?\\r?\\n(.*?)\\r?\\n?```")
+)
+
+// BuildPrompt constructs a context-aware prompt based on the active mode.
+func BuildPrompt(mode AIMode, userQuery string, activeFile string, codeContent string, lastCommand string, lastOutput string, fileList []string) string {
 	var sb strings.Builder
 
-	sb.WriteString("You are an expert software developer and debugging assistant inside the TIDE terminal IDE.\n\n")
+	switch mode {
+	case ModeUpdateFile:
+		sb.WriteString("You are an expert software developer embedded in the TIDE terminal IDE.\n")
+		sb.WriteString("Your task is to modify the active file based on the user's instructions.\n\n")
 
-	if activeFile != "" && codeContent != "" {
-		ext := strings.TrimPrefix(filepath.Ext(activeFile), ".")
-		if ext == "" {
-			ext = "text"
+		if activeFile != "" && codeContent != "" {
+			ext := strings.TrimPrefix(filepath.Ext(activeFile), ".")
+			if ext == "" {
+				ext = "text"
+			}
+			sb.WriteString(fmt.Sprintf("### Current File: %s\n```%s\n%s\n```\n\n", filepath.Base(activeFile), ext, codeContent))
 		}
-		sb.WriteString(fmt.Sprintf("### Active File: %s\n```%s\n%s\n```\n\n", filepath.Base(activeFile), ext, codeContent))
-	}
 
-	if lastOutput != "" {
-		cmdHeader := "Last Compiler / Terminal Output:"
-		if lastCommand != "" {
-			cmdHeader = fmt.Sprintf("Command ($ %s) Output:", lastCommand)
+		if lastOutput != "" {
+			cmdHeader := "Last Compiler / Terminal Output:"
+			if lastCommand != "" {
+				cmdHeader = fmt.Sprintf("Command ($ %s) Output:", lastCommand)
+			}
+			sb.WriteString(fmt.Sprintf("### %s\n```\n%s\n```\n\n", cmdHeader, lastOutput))
 		}
-		sb.WriteString(fmt.Sprintf("### %s\n```\n%s\n```\n\n", cmdHeader, lastOutput))
-	}
 
-	sb.WriteString("### User Request:\n")
-	sb.WriteString(userQuery)
-	sb.WriteString("\n\nPlease provide a clear, concise, and helpful response. If fixing code, explain the cause and provide the corrected code snippet.")
+		sb.WriteString("### User Edit Request:\n")
+		sb.WriteString(userQuery)
+		sb.WriteString("\n\n### CRITICAL INSTRUCTIONS:\n")
+		sb.WriteString("1. Return the COMPLETE, UPDATED file content in a single markdown code block.\n")
+		sb.WriteString("2. Do NOT use ellipses (...) or placeholders. Output the full file ready to be saved.\n")
+		sb.WriteString("3. Provide a brief explanation of the changes before or after the code block.\n")
+
+	case ModeGenerateFile:
+		sb.WriteString("You are an expert software developer embedded in the TIDE terminal IDE.\n")
+		sb.WriteString("Your task is to generate a new source file based on the user's request.\n\n")
+
+		if len(fileList) > 0 {
+			sb.WriteString(fmt.Sprintf("### Existing Project Files:\n%s\n\n", strings.Join(fileList, ", ")))
+		}
+
+		sb.WriteString("### User Request:\n")
+		sb.WriteString(userQuery)
+		sb.WriteString("\n\n### CRITICAL INSTRUCTIONS:\n")
+		sb.WriteString("1. On the first line, specify the recommended filename in this exact format: `FILENAME: filename.ext`\n")
+		sb.WriteString("2. Output the COMPLETE new file code inside a single markdown code block.\n")
+		sb.WriteString("3. Ensure the code is complete, valid, and fully implemented without placeholders.\n")
+
+	default: // ModeConsoleQA
+		sb.WriteString("You are an expert software developer and debugging assistant inside the TIDE terminal IDE.\n\n")
+
+		if activeFile != "" && codeContent != "" {
+			ext := strings.TrimPrefix(filepath.Ext(activeFile), ".")
+			if ext == "" {
+				ext = "text"
+			}
+			sb.WriteString(fmt.Sprintf("### Active File: %s\n```%s\n%s\n```\n\n", filepath.Base(activeFile), ext, codeContent))
+		}
+
+		if lastOutput != "" {
+			cmdHeader := "Last Compiler / Terminal Output:"
+			if lastCommand != "" {
+				cmdHeader = fmt.Sprintf("Command ($ %s) Output:", lastCommand)
+			}
+			sb.WriteString(fmt.Sprintf("### %s\n```\n%s\n```\n\n", cmdHeader, lastOutput))
+		}
+
+		sb.WriteString("### User Request:\n")
+		sb.WriteString(userQuery)
+		sb.WriteString("\n\nPlease provide a clear, concise, and helpful response. If explaining code fixes, provide the corrected code snippet.")
+	}
 
 	return sb.String()
 }
 
+// ExtractCodeAndFile extracts the code block, suggested filename, and explanation from Gemini's full response.
+func ExtractCodeAndFile(response string, defaultFilename string) (filename string, code string, explanation string) {
+	filename = defaultFilename
+
+	// Check if response suggests a filename
+	if match := filenameRegex.FindStringSubmatch(response); match != nil {
+		fn := strings.TrimSpace(match[1])
+		if fn != "" {
+			filename = filepath.Clean(fn)
+		}
+	}
+
+	// Extract code block
+	if match := codeBlockRegex.FindStringSubmatch(response); match != nil {
+		code = strings.TrimSpace(match[1])
+		// Explanation is everything outside the code block
+		explanation = strings.TrimSpace(codeBlockRegex.ReplaceAllString(response, ""))
+		if explanation != "" {
+			explanation = filenameRegex.ReplaceAllString(explanation, "")
+			explanation = strings.TrimSpace(explanation)
+		}
+		return filename, code, explanation
+	}
+
+	// If no code block fence found, return response as code if it has lines
+	return filename, strings.TrimSpace(response), ""
+}
+
 // AskGeminiStream sends a prompt to Gemini and streams chunks back via a Bubble Tea channel.
-func AskGeminiStream(ctx context.Context, apiKey string, modelName string, prompt string, ch chan<- AIChunkMsg) {
+func AskGeminiStream(ctx context.Context, apiKey string, modelName string, mode AIMode, prompt string, ch chan<- AIChunkMsg) {
 	defer close(ch)
 
 	if apiKey == "" {
-		ch <- AIChunkMsg{Err: fmt.Errorf("Gemini API key is not configured. Press ^G or enter key when prompted.")}
+		ch <- AIChunkMsg{Err: fmt.Errorf("Gemini API key is not configured. Press ^G or enter key when prompted."), Mode: mode}
 		return
 	}
 
@@ -64,22 +153,22 @@ func AskGeminiStream(ctx context.Context, apiKey string, modelName string, promp
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {
-		ch <- AIChunkMsg{Err: fmt.Errorf("failed to create GenAI client: %w", err)}
+		ch <- AIChunkMsg{Err: fmt.Errorf("failed to create GenAI client: %w", err), Mode: mode}
 		return
 	}
 
 	for resp, err := range client.Models.GenerateContentStream(ctx, modelName, genai.Text(prompt), nil) {
 		if err != nil {
-			ch <- AIChunkMsg{Err: fmt.Errorf("streaming error: %w", err)}
+			ch <- AIChunkMsg{Err: fmt.Errorf("streaming error: %w", err), Mode: mode}
 			return
 		}
 		text := resp.Text()
 		if text != "" {
-			ch <- AIChunkMsg{Chunk: text}
+			ch <- AIChunkMsg{Chunk: text, Mode: mode}
 		}
 	}
 
-	ch <- AIChunkMsg{Done: true}
+	ch <- AIChunkMsg{Done: true, Mode: mode}
 }
 
 // ListenForAIChunk returns a tea.Cmd that waits for the next message on the AI chunk channel.

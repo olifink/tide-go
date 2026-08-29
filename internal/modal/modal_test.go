@@ -1,7 +1,9 @@
 package modal
 
 import (
+	"strings"
 	"testing"
+	"tide/internal/ai"
 )
 
 func TestModalLifecycle(t *testing.T) {
@@ -34,9 +36,25 @@ func TestModalLifecycle(t *testing.T) {
 		t.Errorf("modal should remain active after Clear()")
 	}
 
-	m.OpenGeminiPrompt(true)
-	if !m.Active || m.Type != GeminiPrompt {
-		t.Errorf("expected GeminiPrompt modal active")
+	// 1. Test UpdateFile prompt
+	m.OpenGeminiPrompt(ai.ModeUpdateFile, "main.go")
+	if !m.Active || m.Type != GeminiPrompt || m.AIMode != ai.ModeUpdateFile {
+		t.Errorf("expected ModeUpdateFile prompt active")
+	}
+	if !strings.Contains(m.Title, "main.go") {
+		t.Errorf("expected title to contain main.go, got: %s", m.Title)
+	}
+
+	// 2. Test GenerateFile prompt
+	m.OpenGeminiPrompt(ai.ModeGenerateFile, "")
+	if !m.Active || m.Type != GeminiPrompt || m.AIMode != ai.ModeGenerateFile {
+		t.Errorf("expected ModeGenerateFile prompt active")
+	}
+
+	// 3. Test ConsoleQA prompt
+	m.OpenGeminiPrompt(ai.ModeConsoleQA, "")
+	if !m.Active || m.Type != GeminiPrompt || m.AIMode != ai.ModeConsoleQA {
+		t.Errorf("expected ModeConsoleQA prompt active")
 	}
 
 	m.OpenAPIKey()
