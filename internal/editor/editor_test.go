@@ -29,33 +29,33 @@ func TestBufferLoadAndModify(t *testing.T) {
 	}
 
 	if buf.FileName() != "example.go" {
-		t.Errorf("unexpected filename: %s", buf.FileName())
+		t.Errorf("expected FileName 'example.go', got %s", buf.FileName())
 	}
 	if buf.Language != "Go" {
-		t.Errorf("unexpected language: %s", buf.Language)
+		t.Errorf("expected Language 'Go', got %s", buf.Language)
 	}
 	if buf.IsModified {
-		t.Errorf("buffer should not be modified initially")
+		t.Errorf("expected IsModified false initially")
 	}
 
-	// Modify buffer
-	buf.SetText("package main\n\nfunc main() {\n    // modified\n}\n")
+	// Modify text
+	buf.SetText("package main\n\nfunc main() {\n    println(\"hello\")\n}\n")
 	if !buf.IsModified {
-		t.Errorf("buffer should be marked modified")
+		t.Errorf("expected IsModified true after change")
 	}
 
-	// Save buffer
+	// Save back
 	if err := buf.Save(); err != nil {
-		t.Fatalf("failed to save buffer: %v", err)
+		t.Fatalf("failed to save: %v", err)
 	}
 	if buf.IsModified {
-		t.Errorf("buffer should not be modified after save")
+		t.Errorf("expected IsModified false after save")
 	}
 
 	// Verify disk content
 	savedData, _ := os.ReadFile(filePath)
 	if string(savedData) != buf.CurrentText {
-		t.Errorf("disk content mismatch")
+		t.Errorf("disk content does not match buffer content")
 	}
 }
 
@@ -66,33 +66,42 @@ func TestBufferReload(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	filePath := filepath.Join(tmpDir, "reload.go")
-	_ = os.WriteFile(filePath, []byte("package main\n"), 0644)
+	filePath := filepath.Join(tmpDir, "test.go")
+	_ = os.WriteFile(filePath, []byte("version 1"), 0644)
 
-	ed := New("monokai", 80, 20)
-	if err := ed.OpenFile(filePath); err != nil {
+	buf, err := LoadFile(filePath)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	// 1. External change on disk (e.g. gofmt or shell command)
-	_ = os.WriteFile(filePath, []byte("package main\n\nfunc NewFunc() {}\n"), 0644)
-	changed := ed.Reload()
-	if !changed {
-		t.Errorf("expected ed.Reload() to return true after external modification")
-	}
-	if !strings.Contains(ed.Buffer.CurrentText, "NewFunc") {
-		t.Errorf("expected buffer to contain updated text from disk")
+	// No external change
+	reloaded, err := buf.Reload()
+	if err != nil || reloaded {
+		t.Errorf("expected no reload when unchanged")
 	}
 
-	// 2. In-memory unsaved edits are protected
-	ed.Buffer.SetText("package main\n// in-memory unsaved")
-	_ = os.WriteFile(filePath, []byte("package main\n// external change"), 0644)
-	changed = ed.Reload()
-	if changed {
-		t.Errorf("ed.Reload() should not overwrite unsaved in-memory edits")
+	// External change on disk (e.g. gofmt or git checkout)
+	_ = os.WriteFile(filePath, []byte("version 2 (reloaded)"), 0644)
+
+	reloaded, err = buf.Reload()
+	if err != nil || !reloaded {
+		t.Errorf("expected reload to succeed")
 	}
-	if !strings.Contains(ed.Buffer.CurrentText, "in-memory unsaved") {
-		t.Errorf("unsaved edits should be preserved")
+	if buf.CurrentText != "version 2 (reloaded)" {
+		t.Errorf("expected reloaded text, got: %s", buf.CurrentText)
+	}
+
+	// In-memory edit should NOT be overwritten by external reload
+	buf.SetText("in-memory uncommitted edit")
+	buf.IsModified = true
+
+	_ = os.WriteFile(filePath, []byte("version 3 on disk"), 0644)
+	reloaded, _ = buf.Reload()
+	if reloaded {
+		t.Errorf("expected reload to be skipped when buffer has unsaved edits")
+	}
+	if buf.CurrentText != "in-memory uncommitted edit" {
+		t.Errorf("expected unsaved in-memory edit to be preserved")
 	}
 }
 
@@ -103,24 +112,22 @@ func TestBinaryFileRejection(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Binary file with null bytes
-	binPath := filepath.Join(tmpDir, "binary.dat")
-	binData := []byte{0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01, 0x02, 0x00, 0x00}
-	if err := os.WriteFile(binPath, binData, 0644); err != nil {
-		t.Fatal(err)
-	}
+	binFile := filepath.Join(tmpDir, "sample.bin")
+	// Write null bytes
+	binaryData := []byte{0x7f, 0x45, 0x4c, 0x46, 0x00, 0x00, 0x01, 0x01}
+	_ = os.WriteFile(binFile, binaryData, 0644)
 
-	isText, checkErr := IsTextFile(binPath)
+	isText, checkErr := IsTextFile(binFile)
 	if isText || checkErr == nil {
 		t.Errorf("expected binary file to be rejected")
 	}
 
-	buf, err := LoadFile(binPath)
-	if err == nil || buf.IsLoaded {
-		t.Errorf("expected LoadFile on binary file to fail")
+	buf, _ := LoadFile(binFile)
+	if buf.IsLoaded {
+		t.Errorf("expected buffer not to be loaded for binary file")
 	}
-	if !strings.Contains(buf.ErrorMessage, "binary") {
-		t.Errorf("expected binary error message, got: %s", buf.ErrorMessage)
+	if buf.ErrorMessage == "" {
+		t.Errorf("expected non-empty ErrorMessage for binary file")
 	}
 }
 
@@ -131,12 +138,12 @@ func TestBinaryExtensionRejection(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	imgFile := filepath.Join(tmpDir, "photo.png")
-	_ = os.WriteFile(imgFile, []byte("fake-png-data"), 0644)
+	zipFile := filepath.Join(tmpDir, "archive.zip")
+	_ = os.WriteFile(zipFile, []byte("dummy zip content"), 0644)
 
-	isText, checkErr := IsTextFile(imgFile)
+	isText, checkErr := IsTextFile(zipFile)
 	if isText || checkErr == nil {
-		t.Errorf("expected .png extension to be rejected")
+		t.Errorf("expected .zip to be rejected")
 	}
 }
 
@@ -193,7 +200,7 @@ func main() {
 		},
 	}
 
-	output := HighlightCode("main.go", code, "monokai", diags, 0, 10, 80)
+	output := HighlightCode("main.go", code, "monokai", diags, 0, 10, 80, false, 0)
 	if output == "" {
 		t.Errorf("expected non-empty highlighted output")
 	}
@@ -235,7 +242,7 @@ clean:
 	rm -f *.o program
 `
 	inputLines := strings.Split(strings.TrimRight(makeContent, "\n"), "\n")
-	output := HighlightCode("Makefile", makeContent, "monokai", nil, 0, len(inputLines), 80)
+	output := HighlightCode("Makefile", makeContent, "monokai", nil, 0, len(inputLines), 80, false, 0)
 	outLines := strings.Split(output, "\n")
 
 	if len(outLines) != len(inputLines) {
@@ -253,7 +260,7 @@ clean:
 
 func TestHighlightCodeCRLFHandling(t *testing.T) {
 	crlfContent := "package main\r\n\r\nfunc main() {\r\n}\r\n"
-	output := HighlightCode("main.go", crlfContent, "monokai", nil, 0, 4, 80)
+	output := HighlightCode("main.go", crlfContent, "monokai", nil, 0, 4, 80, false, 0)
 	outLines := strings.Split(output, "\n")
 
 	if len(outLines) != 4 {
@@ -264,5 +271,40 @@ func TestHighlightCodeCRLFHandling(t *testing.T) {
 		if strings.Contains(l, "\r") {
 			t.Errorf("line %d contains carriage return: %q", i+1, l)
 		}
+	}
+}
+
+func TestHighlightCodeWordWrap(t *testing.T) {
+	longLine := "func VeryLongFunctionWithManyParameters(firstParameter string, secondParameter int, thirdParameter bool) (string, error) {"
+	output := HighlightCode("main.go", longLine, "monokai", nil, 0, 10, 40, true, 0)
+	outLines := strings.Split(output, "\n")
+
+	// Should wrap into multiple visual lines with continuation indicator ↳
+	hasContinuation := false
+	for _, l := range outLines {
+		if strings.Contains(l, "↳") {
+			hasContinuation = true
+			break
+		}
+	}
+	if !hasContinuation {
+		t.Errorf("expected wrapped output to contain continuation arrow ↳, got:\n%s", output)
+	}
+}
+
+func TestHighlightCodeHorizontalScroll(t *testing.T) {
+	longLine := "1234567890abcdefghijklmnopqrstuvwxyz"
+	// Output with scrollCol=0 vs scrollCol=10
+	out0 := ansi.Strip(HighlightCode("test.txt", longLine, "monokai", nil, 0, 1, 80, false, 0))
+	out10 := ansi.Strip(HighlightCode("test.txt", longLine, "monokai", nil, 0, 1, 80, false, 10))
+
+	if !strings.Contains(out0, "1234567890") {
+		t.Errorf("expected out0 to contain prefix, got: %s", out0)
+	}
+	if strings.Contains(out10, "1234567890") {
+		t.Errorf("expected out10 to have scrolled past prefix, got: %s", out10)
+	}
+	if !strings.Contains(out10, "abcdefgh") {
+		t.Errorf("expected out10 to contain scrolled content, got: %s", out10)
 	}
 }

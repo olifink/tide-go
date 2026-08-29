@@ -89,6 +89,7 @@ func InitialModel(startPath string) Model {
 
 	ft := filetree.New(workingDir, 26, 20)
 	ed := editor.New(cfg.ChromaTheme, 60, 20)
+	ed.WordWrap = cfg.WordWrap
 	con := console.New(80, 8)
 	mod := modal.New()
 

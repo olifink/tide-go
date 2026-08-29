@@ -25,6 +25,8 @@ type Model struct {
 	Mode        Mode
 	Textarea    textarea.Model
 	ScrollLine  int
+	ScrollCol   int
+	WordWrap    bool
 	Width       int
 	Height      int
 	Focused     bool
@@ -49,6 +51,8 @@ func New(theme string, width, height int) Model {
 		Mode:        ModeView,
 		Textarea:    ta,
 		ScrollLine:  0,
+		ScrollCol:   0,
+		WordWrap:    false,
 		Width:       width,
 		Height:      height,
 		Theme:       theme,
@@ -63,6 +67,7 @@ func (m *Model) OpenFile(filePath string) error {
 	buf, err := LoadFile(filePath)
 	m.Buffer = buf
 	m.ScrollLine = 0
+	m.ScrollCol = 0
 	if err != nil {
 		m.Mode = ModeView
 		m.Textarea.SetValue("")
@@ -100,6 +105,14 @@ func (m *Model) ToggleMode() {
 		m.Mode = ModeView
 		m.Buffer.SetText(m.Textarea.Value())
 		m.Textarea.Blur()
+	}
+}
+
+// ToggleWordWrap toggles word wrapping on and off in View mode.
+func (m *Model) ToggleWordWrap() {
+	m.WordWrap = !m.WordWrap
+	if m.WordWrap {
+		m.ScrollCol = 0
 	}
 }
 
@@ -154,19 +167,28 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return *m, cmd
 	}
 
-	// In View Mode, handle scrolling
+	// In View Mode, handle scrolling and word-wrap toggle
 	if keyMsg, ok := msg.(tea.KeyMsg); ok && m.Focused {
 		switch keyMsg.String() {
+		case "w", "W":
+			m.ToggleWordWrap()
 		case "up", "k":
 			m.ScrollUp(1)
 		case "down", "j":
 			m.ScrollDown(1)
+		case "left", "h":
+			m.ScrollLeft(4)
+		case "right", "l":
+			m.ScrollRight(4)
+		case "0":
+			m.ScrollCol = 0
 		case "pgup":
 			m.ScrollUp(max(1, m.Height/2))
 		case "pgdown":
 			m.ScrollDown(max(1, m.Height/2))
 		case "home", "g":
 			m.ScrollLine = 0
+			m.ScrollCol = 0
 		case "end", "G":
 			m.ScrollLine = max(0, m.Buffer.LineCount-(m.Height-1))
 		}
@@ -187,6 +209,16 @@ func (m *Model) ScrollDown(n int) {
 	m.ScrollLine = min(maxScroll, m.ScrollLine+n)
 }
 
+// ScrollLeft scrolls left by n columns.
+func (m *Model) ScrollLeft(n int) {
+	m.ScrollCol = max(0, m.ScrollCol-n)
+}
+
+// ScrollRight scrolls right by n columns.
+func (m *Model) ScrollRight(n int) {
+	m.ScrollCol = max(0, m.ScrollCol+n)
+}
+
 // View renders the editor component.
 func (m *Model) View() string {
 	contentHeight := max(1, m.Height-1)
@@ -203,7 +235,7 @@ func (m *Model) View() string {
 			blankLines = append(blankLines, strings.Split(rendered, "\n")...)
 		} else {
 			welcomeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Padding(1, 1)
-			welcomeText := "Welcome to TIDE\n\n- Select a file from sidebar (^F)\n- Press ^N to create a new file\n- Press ^R to run or build\n- Press ^G to ask Gemini"
+			welcomeText := "Welcome to TIDE\n\n- Select a file from sidebar (^F)\n- Press ^N to create a new file\n- Press ^B to build / ^R to run\n- Press ^G to ask Gemini"
 			rendered := welcomeStyle.Render(welcomeText)
 			welcomeLines := strings.Split(rendered, "\n")
 			blankLines = append(blankLines, welcomeLines...)
@@ -234,6 +266,8 @@ func (m *Model) View() string {
 			m.ScrollLine,
 			contentHeight,
 			m.Width,
+			m.WordWrap,
+			m.ScrollCol,
 		)
 	}
 
@@ -263,17 +297,28 @@ func (m *Model) View() string {
 			Render(" EDIT ") + " " +
 			lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C")).Render("^S Save  ^E View")
 	} else {
+		wrapStatus := "w Wrap [OFF]"
+		if m.WordWrap {
+			wrapStatus = "w Wrap [ON]"
+		}
 		modeBadge = lipgloss.NewStyle().
 			Background(lipgloss.Color("#BD93F9")).
 			Foreground(lipgloss.Color("#282A36")).
 			Bold(true).
 			Render(" VIEW ") + " " +
-			lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render("^E Edit  ↑/↓ Scroll")
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render(fmt.Sprintf("^E Edit  %s  ↑/↓/←/→ Scroll", wrapStatus))
+	}
+
+	infoText := fmt.Sprintf("[%s | %d lines]", m.Buffer.Language, m.Buffer.LineCount)
+	if m.WordWrap {
+		infoText = fmt.Sprintf("[%s | %d lines | Wrap]", m.Buffer.Language, m.Buffer.LineCount)
+	} else if m.ScrollCol > 0 {
+		infoText = fmt.Sprintf("[%s | %d lines | Col %d]", m.Buffer.Language, m.Buffer.LineCount, m.ScrollCol)
 	}
 
 	langBadge := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#50FA7B")).
-		Render(fmt.Sprintf("[%s | %d lines]", m.Buffer.Language, m.Buffer.LineCount))
+		Render(infoText)
 
 	statusBar := lipgloss.JoinHorizontal(lipgloss.Top, modeBadge, "  ", langBadge)
 	if m.Width > 0 && ansi.StringWidth(statusBar) > m.Width {

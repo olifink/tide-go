@@ -13,6 +13,7 @@ type Config struct {
 	DefaultBuildCommand string `json:"default_build_command,omitempty"`
 	ChromaTheme         string `json:"chroma_theme,omitempty"`
 	TabWidth            int    `json:"tab_width,omitempty"`
+	WordWrap            bool   `json:"word_wrap,omitempty"`
 }
 
 // DefaultConfig returns the default configuration.
@@ -21,6 +22,7 @@ func DefaultConfig() Config {
 		GeminiModel: "gemini-2.5-flash",
 		ChromaTheme: "monokai",
 		TabWidth:    4,
+		WordWrap:    false,
 	}
 }
 

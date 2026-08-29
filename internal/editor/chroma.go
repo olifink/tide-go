@@ -15,9 +15,9 @@ import (
 	"tide/internal/runner"
 )
 
-// HighlightCode renders source code using Chroma with line numbers and error gutters,
-// strictly truncating lines to avoid terminal wrapping and layout shifts.
-func HighlightCode(filename string, content string, themeName string, diagnostics map[int][]runner.Diagnostic, startLine int, maxLines int, width int) string {
+// HighlightCode renders source code using Chroma with line numbers, error gutters,
+// optional word-wrapping, and horizontal scrolling support.
+func HighlightCode(filename string, content string, themeName string, diagnostics map[int][]runner.Diagnostic, startLine int, maxLines int, width int, wordWrap bool, scrollCol int) string {
 	if maxLines <= 0 {
 		return ""
 	}
@@ -58,6 +58,8 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 	if gutterDigits < 2 {
 		gutterDigits = 2
 	}
+	gutterWidth := gutterDigits + 5 // e.g. "  12 │ " is 7 chars
+	availCodeWidth := max(10, width-gutterWidth)
 
 	// Setup Chroma Terminal formatter for single-line chunks
 	formatter := formatters.Get("terminal256")
@@ -65,7 +67,6 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 		formatter = formatters.Fallback
 	}
 
-	endLine := min(totalLines, startLine+maxLines)
 	var renderedLines []string
 
 	normalGutterStyle := lipgloss.NewStyle().
@@ -86,7 +87,10 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 		Foreground(lipgloss.Color("#FF5555")).
 		Italic(true)
 
-	for i := startLine; i < endLine; i++ {
+	for i := startLine; i < totalLines; i++ {
+		if len(renderedLines) >= maxLines {
+			break
+		}
 		lineNum := i + 1
 		lineContent := strings.TrimRight(lines[i], "\r\n")
 
@@ -144,26 +148,75 @@ func HighlightCode(filename string, content string, themeName string, diagnostic
 			gutter = normalGutterStyle.Render(gutterText)
 		}
 
-		fullLine := gutter + highlightedContent
-
-		// If line has diagnostic message and fits width, append inline indicator
-		if diagMsg != "" && width > 40 {
-			msgPreview := "  ◄ " + diagMsg
-			availWidth := width - ansi.StringWidth(fullLine) - 2
-			if availWidth > 8 {
-				if len(msgPreview) > availWidth {
-					msgPreview = msgPreview[:availWidth-3] + "..."
+		if wordWrap {
+			// WORD WRAP: split content across lines
+			lineWidth := ansi.StringWidth(highlightedContent)
+			if lineWidth <= availCodeWidth || width <= 0 {
+				fullLine := gutter + highlightedContent
+				// Diagnostic message indicator if it fits
+				if diagMsg != "" && width > 40 {
+					msgPreview := "  ◄ " + diagMsg
+					remWidth := width - ansi.StringWidth(fullLine) - 2
+					if remWidth > 8 {
+						if len(msgPreview) > remWidth {
+							msgPreview = msgPreview[:remWidth-3] + "..."
+						}
+						fullLine += errorMsgStyle.Render(msgPreview)
+					}
 				}
-				fullLine += errorMsgStyle.Render(msgPreview)
+				if width > 0 && ansi.StringWidth(fullLine) > width {
+					fullLine = ansi.Truncate(fullLine, width, "")
+				}
+				renderedLines = append(renderedLines, fullLine)
+			} else {
+				wrapped := ansi.Hardwrap(highlightedContent, availCodeWidth, true)
+				subLines := strings.Split(wrapped, "\n")
+				for sIdx, sub := range subLines {
+					if len(renderedLines) >= maxLines {
+						break
+					}
+					var rowLine string
+					if sIdx == 0 {
+						rowLine = gutter + sub
+					} else {
+						contGutterText := fmt.Sprintf("%*s ↳ ", gutterDigits+2, "")
+						contGutter := normalGutterStyle.Render(contGutterText)
+						rowLine = contGutter + sub
+					}
+					if width > 0 && ansi.StringWidth(rowLine) > width {
+						rowLine = ansi.Truncate(rowLine, width, "")
+					}
+					renderedLines = append(renderedLines, rowLine)
+				}
 			}
-		}
+		} else {
+			// NO WRAP: horizontal scrolling via scrollCol
+			contentToRender := highlightedContent
+			if scrollCol > 0 && ansi.StringWidth(contentToRender) > 0 {
+				contentToRender = ansi.TruncateLeft(contentToRender, scrollCol, "")
+			}
 
-		// Strictly truncate full line to width to prevent horizontal wrapping
-		if width > 0 && ansi.StringWidth(fullLine) > width {
-			fullLine = ansi.Truncate(fullLine, width, "")
-		}
+			fullLine := gutter + contentToRender
 
-		renderedLines = append(renderedLines, fullLine)
+			// If line has diagnostic message and fits width, append inline indicator
+			if diagMsg != "" && width > 40 {
+				msgPreview := "  ◄ " + diagMsg
+				availWidth := width - ansi.StringWidth(fullLine) - 2
+				if availWidth > 8 {
+					if len(msgPreview) > availWidth {
+						msgPreview = msgPreview[:availWidth-3] + "..."
+					}
+					fullLine += errorMsgStyle.Render(msgPreview)
+				}
+			}
+
+			// Strictly truncate full line to width to prevent horizontal wrapping
+			if width > 0 && ansi.StringWidth(fullLine) > width {
+				fullLine = ansi.Truncate(fullLine, width, "")
+			}
+
+			renderedLines = append(renderedLines, fullLine)
+		}
 	}
 
 	// Pad remaining lines to always match maxLines exactly
