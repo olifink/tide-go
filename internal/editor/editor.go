@@ -1,0 +1,222 @@
+package editor
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/textarea"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"tide/internal/runner"
+)
+
+// Mode represents the current state of the editor pane.
+type Mode int
+
+const (
+	ModeView Mode = iota
+	ModeEdit
+)
+
+// Model represents the editor / Chroma viewer component.
+type Model struct {
+	Buffer      Buffer
+	Mode        Mode
+	Textarea    textarea.Model
+	ScrollLine  int
+	Width       int
+	Height      int
+	Focused     bool
+	Theme       string
+	Diagnostics map[int][]runner.Diagnostic
+}
+
+// New creates a new editor model.
+func New(theme string, width, height int) Model {
+	ta := textarea.New()
+	ta.ShowLineNumbers = true
+	ta.Prompt = ""
+	ta.CharLimit = 0 // unlimited
+
+	// Custom styling for textarea
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle().Background(lipgloss.Color("#282A36"))
+	ta.FocusedStyle.LineNumber = lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4"))
+	ta.BlurredStyle.LineNumber = lipgloss.NewStyle().Foreground(lipgloss.Color("#44475A"))
+
+	m := Model{
+		Buffer:      NewBuffer(),
+		Mode:        ModeView,
+		Textarea:    ta,
+		ScrollLine:  0,
+		Width:       width,
+		Height:      height,
+		Theme:       theme,
+		Diagnostics: make(map[int][]runner.Diagnostic),
+	}
+	m.updateSizes()
+	return m
+}
+
+// OpenFile loads a file into the editor.
+func (m *Model) OpenFile(filePath string) error {
+	buf, err := LoadFile(filePath)
+	m.Buffer = buf
+	m.ScrollLine = 0
+	if err != nil {
+		return err
+	}
+
+	m.Textarea.SetValue(buf.CurrentText)
+	m.Textarea.CursorStart()
+	return nil
+}
+
+// ToggleMode switches between View and Edit modes.
+func (m *Model) ToggleMode() {
+	if m.Mode == ModeView {
+		m.Mode = ModeEdit
+		m.Textarea.SetValue(m.Buffer.CurrentText)
+		m.Textarea.Focus()
+	} else {
+		m.Mode = ModeView
+		m.Buffer.SetText(m.Textarea.Value())
+		m.Textarea.Blur()
+	}
+}
+
+// SetDiagnostics updates compiler diagnostics for error highlights.
+func (m *Model) SetDiagnostics(allDiags []runner.Diagnostic) {
+	if m.Buffer.FilePath == "" {
+		m.Diagnostics = make(map[int][]runner.Diagnostic)
+		return
+	}
+	m.Diagnostics = runner.DiagnosticsForFile(allDiags, m.Buffer.FilePath)
+}
+
+// SaveFile saves current buffer to disk.
+func (m *Model) SaveFile() error {
+	if m.Mode == ModeEdit {
+		m.Buffer.SetText(m.Textarea.Value())
+	}
+	return m.Buffer.Save()
+}
+
+// SetSize updates editor dimensions.
+func (m *Model) SetSize(width, height int) {
+	m.Width = width
+	m.Height = height
+	m.updateSizes()
+}
+
+func (m *Model) updateSizes() {
+	contentHeight := max(1, m.Height-1) // 1 row for mode status bar
+	contentWidth := max(10, m.Width)
+	m.Textarea.SetWidth(contentWidth)
+	m.Textarea.SetHeight(contentHeight)
+}
+
+// Update handles tea.Msg for editor.
+func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	if m.Mode == ModeEdit {
+		var cmd tea.Cmd
+		m.Textarea, cmd = m.Textarea.Update(msg)
+		// Check modification
+		m.Buffer.IsModified = (m.Textarea.Value() != m.Buffer.InitialText)
+		return *m, cmd
+	}
+
+	// In View Mode, handle scrolling
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && m.Focused {
+		switch keyMsg.String() {
+		case "up", "k":
+			m.ScrollUp(1)
+		case "down", "j":
+			m.ScrollDown(1)
+		case "pgup":
+			m.ScrollUp(max(1, m.Height/2))
+		case "pgdown":
+			m.ScrollDown(max(1, m.Height/2))
+		case "home", "g":
+			m.ScrollLine = 0
+		case "end", "G":
+			m.ScrollLine = max(0, m.Buffer.LineCount-m.Height+1)
+		}
+	}
+
+	return *m, nil
+}
+
+// ScrollUp scrolls up by n lines.
+func (m *Model) ScrollUp(n int) {
+	m.ScrollLine = max(0, m.ScrollLine-n)
+}
+
+// ScrollDown scrolls down by n lines.
+func (m *Model) ScrollDown(n int) {
+	maxScroll := max(0, m.Buffer.LineCount-m.Height+2)
+	m.ScrollLine = min(maxScroll, m.ScrollLine+n)
+}
+
+// View renders the editor component.
+func (m *Model) View() string {
+	if !m.Buffer.IsLoaded {
+		if m.Buffer.ErrorMessage != "" {
+			errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Padding(2, 2)
+			return errStyle.Render(fmt.Sprintf("Error opening file:\n%s", m.Buffer.ErrorMessage))
+		}
+		welcomeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Padding(2, 2)
+		return welcomeStyle.Render("Welcome to TIDE\n\n- Select a file from the sidebar (or press ^F)\n- Press ^N to create a new file\n- Press ^R to run or build\n- Press ^G to ask Gemini")
+	}
+
+	contentHeight := max(1, m.Height-1)
+	var content string
+
+	if m.Mode == ModeEdit {
+		content = m.Textarea.View()
+	} else {
+		content = HighlightCode(
+			m.Buffer.FilePath,
+			m.Buffer.CurrentText,
+			m.Theme,
+			m.Diagnostics,
+			m.ScrollLine,
+			contentHeight,
+			m.Width,
+		)
+	}
+
+	// Pad lines if fewer than contentHeight
+	renderedLines := strings.Split(content, "\n")
+	for len(renderedLines) < contentHeight {
+		renderedLines = append(renderedLines, "")
+	}
+	if len(renderedLines) > contentHeight {
+		renderedLines = renderedLines[:contentHeight]
+	}
+
+	// Mode / Status bar at bottom of editor pane
+	var modeBadge string
+	if m.Mode == ModeEdit {
+		modeBadge = lipgloss.NewStyle().
+			Background(lipgloss.Color("#FFB86C")).
+			Foreground(lipgloss.Color("#282A36")).
+			Bold(true).
+			Render(" EDIT ") + " " +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#F1FA8C")).Render("^S Save  ^E Return to View")
+	} else {
+		modeBadge = lipgloss.NewStyle().
+			Background(lipgloss.Color("#BD93F9")).
+			Foreground(lipgloss.Color("#282A36")).
+			Bold(true).
+			Render(" VIEW ") + " " +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render("^E Switch to Edit Mode  ↑/↓ Scroll")
+	}
+
+	langBadge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#50FA7B")).
+		Render(fmt.Sprintf("[%s | %d lines]", m.Buffer.Language, m.Buffer.LineCount))
+
+	statusBar := lipgloss.JoinHorizontal(lipgloss.Top, modeBadge, "  ", langBadge)
+
+	return strings.Join(renderedLines, "\n") + "\n" + statusBar
+}

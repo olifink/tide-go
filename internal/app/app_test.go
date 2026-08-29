@@ -1,0 +1,107 @@
+package app
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"tide/internal/modal"
+	"tide/internal/runner"
+)
+
+func TestAppInitialModel(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-app-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	_ = os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n"), 0644)
+
+	m := InitialModel(tmpDir)
+	if m.WorkingDir != tmpDir {
+		t.Errorf("expected working dir %s, got %s", tmpDir, m.WorkingDir)
+	}
+	if m.Editor.Buffer.FileName() != "main.go" {
+		t.Errorf("expected main.go loaded, got %s", m.Editor.Buffer.FileName())
+	}
+}
+
+func TestAppKeyNavigation(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-app-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	m := InitialModel(tmpDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Initial pane is Files
+	if m.ActivePane != PaneFiles {
+		t.Errorf("expected initial pane PaneFiles")
+	}
+
+	// Tab moves to Editor
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+	if m.ActivePane != PaneEditor {
+		t.Errorf("expected PaneEditor after tab, got %d", m.ActivePane)
+	}
+
+	// Tab moves to Console
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+	if m.ActivePane != PaneConsole {
+		t.Errorf("expected PaneConsole after 2nd tab, got %d", m.ActivePane)
+	}
+
+	// Ctrl+N opens NewFile modal
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlN})
+	m = newM.(Model)
+	if !m.Modal.Active || m.Modal.Type != modal.NewFile {
+		t.Errorf("expected NewFile modal active")
+	}
+
+	// Esc closes modal
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = newM.(Model)
+	if m.Modal.Active {
+		t.Errorf("modal should be closed after Esc")
+	}
+}
+
+func TestAppProcessFinishedMsg(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	procMsg := runner.ProcessFinishedMsg{
+		Command:  "go build .",
+		Output:   "main.go:4:5: undefined: fmt.Println\n",
+		ExitCode: 1,
+		Diagnostics: []runner.Diagnostic{
+			{
+				File:     "main.go",
+				Line:     4,
+				Col:      5,
+				Severity: "error",
+				Message:  "undefined: fmt.Println",
+			},
+		},
+	}
+
+	newM, _ := m.Update(procMsg)
+	m = newM.(Model)
+
+	if len(m.Diagnostics) != 1 {
+		t.Errorf("expected 1 diagnostic, got %d", len(m.Diagnostics))
+	}
+	if len(m.Console.Entries) == 0 {
+		t.Errorf("expected console entry added")
+	}
+}
