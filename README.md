@@ -126,5 +126,8 @@ tide/
 │   ├── modal/            # Popover dialogs (New File, Shell, Gemini, Key)
 │   └── runner/           # Async process runner, builder & error regex parser
 ├── SPECS.md
+├── VERSIONS.md           # Release changelog & version highlights
 └── go.mod
 ```
+
+See [VERSIONS.md](VERSIONS.md) for full version release highlights.
