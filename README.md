@@ -1,6 +1,6 @@
 # 🌊 TIDE
 
-A minimalist, zero-bloat, discoverable TUI development environment for modern Linux CLI workflows (tailored for C and Go).
+A minimalist, zero-bloat, discoverable TUI development environment for modern Linux CLI workflows (tailored for C, Go and Rust).
 
 ---
 
