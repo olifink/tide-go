@@ -61,4 +61,14 @@ func TestModalLifecycle(t *testing.T) {
 	if !m.Active || m.Type != APIKey {
 		t.Errorf("expected APIKey modal active")
 	}
+
+	m.OpenBuildCommand("make custom-build")
+	if !m.Active || m.Type != BuildCommand || m.Value() != "make custom-build" {
+		t.Errorf("expected BuildCommand modal with value, got: %+v", m)
+	}
+
+	m.OpenRunCommand("./bin/custom-run --arg")
+	if !m.Active || m.Type != RunCommand || m.Value() != "./bin/custom-run --arg" {
+		t.Errorf("expected RunCommand modal with value, got: %+v", m)
+	}
 }

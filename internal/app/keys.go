@@ -16,8 +16,10 @@ type KeyMap struct {
 	Tab          key.Binding
 	Backtab      key.Binding
 	Escape       key.Binding
-	FocusConsole key.Binding
-	Fullscreen   key.Binding
+	FocusConsole   key.Binding
+	Fullscreen     key.Binding
+	ConfigureBuild key.Binding
+	ConfigureRun   key.Binding
 }
 
 // DefaultKeyMap returns the standard key bindings.
@@ -43,9 +45,17 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+b"),
 			key.WithHelp("^B", "Build"),
 		),
+		ConfigureBuild: key.NewBinding(
+			key.WithKeys("alt+b"),
+			key.WithHelp("Alt+B", "Config Build"),
+		),
 		Run: key.NewBinding(
 			key.WithKeys("ctrl+r"),
 			key.WithHelp("^R", "Run"),
+		),
+		ConfigureRun: key.NewBinding(
+			key.WithKeys("alt+r"),
+			key.WithHelp("Alt+R", "Config Run"),
 		),
 		ShellCommand: key.NewBinding(
 			key.WithKeys("ctrl+x"),

@@ -611,3 +611,79 @@ func TestAppFileListAltBackspaceOpensShellRm(t *testing.T) {
 		t.Errorf("expected modal input to contain 'rm -f obsolete.txt', got %q", m.Modal.Value())
 	}
 }
+
+func TestAppAltBConfiguresBuildCommand(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// 1. Press Alt+B to open build config dialog
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}, Alt: true})
+	m = newM.(Model)
+
+	if !m.Modal.Active {
+		t.Fatalf("expected modal active after Alt+B")
+	}
+	if m.Modal.Type != modal.BuildCommand {
+		t.Errorf("expected ModalType BuildCommand, got %v", m.Modal.Type)
+	}
+
+	// 2. Edit command in modal and submit with Enter
+	m.Modal.Input.SetValue("make release-all")
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(Model)
+
+	if m.CustomBuildCmd != "make release-all" {
+		t.Errorf("expected CustomBuildCmd 'make release-all', got %q", m.CustomBuildCmd)
+	}
+	if m.Modal.Active {
+		t.Errorf("expected modal closed after submitting")
+	}
+
+	// 3. Trigger Ctrl+B to ensure CustomBuildCmd is used
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	m = newM.(Model)
+
+	if m.Console.RunningTitle != "make release-all" {
+		t.Errorf("expected Ctrl+B to run 'make release-all', got %q", m.Console.RunningTitle)
+	}
+}
+
+func TestAppAltRConfiguresRunCommand(t *testing.T) {
+	m := InitialModel(".")
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// 1. Press Alt+R to open run config dialog
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}, Alt: true})
+	m = newM.(Model)
+
+	if !m.Modal.Active {
+		t.Fatalf("expected modal active after Alt+R")
+	}
+	if m.Modal.Type != modal.RunCommand {
+		t.Errorf("expected ModalType RunCommand, got %v", m.Modal.Type)
+	}
+
+	// 2. Edit command in modal and submit with Enter
+	m.Modal.Input.SetValue("./build/server --port=8080")
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(Model)
+
+	if m.CustomRunCmd != "./build/server --port=8080" {
+		t.Errorf("expected CustomRunCmd './build/server --port=8080', got %q", m.CustomRunCmd)
+	}
+	if m.Modal.Active {
+		t.Errorf("expected modal closed after submitting")
+	}
+
+	// 3. Trigger Ctrl+R to ensure CustomRunCmd is used
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m = newM.(Model)
+
+	if m.Console.RunningTitle != "./build/server --port=8080" {
+		t.Errorf("expected Ctrl+R to run './build/server --port=8080', got %q", m.Console.RunningTitle)
+	}
+}

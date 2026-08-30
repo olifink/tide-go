@@ -18,6 +18,8 @@ const (
 	ShellCommand
 	GeminiPrompt
 	APIKey
+	BuildCommand
+	RunCommand
 )
 
 // Model represents a popover dialog modal.
@@ -64,6 +66,30 @@ func (m *Model) OpenShellCommand(defaultCmd string) {
 	m.Description = "Enter arbitrary CLI command to execute:"
 	m.Input.SetValue(defaultCmd)
 	m.Input.Placeholder = "e.g. go test ./..., git status, make"
+	m.Input.EchoMode = textinput.EchoNormal
+	m.Input.Focus()
+	m.Active = true
+}
+
+// OpenBuildCommand activates the modal dialog to configure and run a custom build command.
+func (m *Model) OpenBuildCommand(defaultCmd string) {
+	m.Type = BuildCommand
+	m.Title = "Configure & Run Build Command"
+	m.Description = "Enter build command for this session (saved for future ^B):"
+	m.Input.SetValue(defaultCmd)
+	m.Input.Placeholder = "e.g. go build -v ./..., make all, cargo build"
+	m.Input.EchoMode = textinput.EchoNormal
+	m.Input.Focus()
+	m.Active = true
+}
+
+// OpenRunCommand activates the modal dialog to configure and run a custom run command.
+func (m *Model) OpenRunCommand(defaultCmd string) {
+	m.Type = RunCommand
+	m.Title = "Configure & Run Command"
+	m.Description = "Enter run command for this session (saved for future ^R):"
+	m.Input.SetValue(defaultCmd)
+	m.Input.Placeholder = "e.g. ./main --dev, python3 script.py, make run"
 	m.Input.EchoMode = textinput.EchoNormal
 	m.Input.Focus()
 	m.Active = true

@@ -48,6 +48,8 @@ type Model struct {
 	aiResponse       string
 	ConsoleMaximized bool
 	EditorFullscreen bool
+	CustomBuildCmd   string
+	CustomRunCmd     string
 }
 
 // InitialModel initializes the TIDE application model.
@@ -306,6 +308,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.StatusMessage = fmt.Sprintf("Running: %s", val)
 					return m, runner.RunCommandCmd(m.WorkingDir, val)
 
+				case modal.BuildCommand:
+					m.CustomBuildCmd = val
+					if m.Editor.Mode == editor.ModeEdit {
+						m.Editor.ToggleMode()
+					}
+					m.ActivePane = PaneConsole
+					m.updateFocus()
+					m.Console.IsRunning = true
+					m.Console.RunningTitle = val
+					m.StatusMessage = fmt.Sprintf("Building: %s", val)
+					return m, runner.RunCommandCmd(m.WorkingDir, val)
+
+				case modal.RunCommand:
+					m.CustomRunCmd = val
+					if m.Editor.Mode == editor.ModeEdit {
+						m.Editor.ToggleMode()
+					}
+					m.ActivePane = PaneConsole
+					m.updateFocus()
+					m.Console.IsRunning = true
+					m.Console.RunningTitle = val
+					m.StatusMessage = fmt.Sprintf("Running: %s", val)
+					return m, runner.RunCommandCmd(m.WorkingDir, val)
+
 				case modal.GeminiPrompt:
 					apiKey := config.GetGeminiAPIKey(m.Config)
 					mode := m.Modal.AIMode
@@ -390,8 +416,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if targetFile == "" && m.FileTree.SelectedItem() != nil {
 				targetFile = m.FileTree.SelectedItem().Path
 			}
-			target := runner.DetectBuildTarget(m.WorkingDir, targetFile)
-			cmdToRun := target.Command
+			cmdToRun := m.CustomBuildCmd
+			desc := "Custom Build"
+			if cmdToRun == "" {
+				target := runner.DetectBuildTarget(m.WorkingDir, targetFile)
+				cmdToRun = target.Command
+				desc = target.Description
+			}
 			if cmdToRun == "" {
 				cmdToRun = "go build ."
 			}
@@ -399,8 +430,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateFocus()
 			m.Console.IsRunning = true
 			m.Console.RunningTitle = cmdToRun
-			m.StatusMessage = fmt.Sprintf("Building (%s)...", target.Description)
+			m.StatusMessage = fmt.Sprintf("Building (%s)...", desc)
 			return m, runner.RunCommandCmd(m.WorkingDir, cmdToRun)
+
+		case "alt+b":
+			targetFile := m.Editor.Buffer.FilePath
+			if m.ActivePane == PaneFiles && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			} else if targetFile == "" && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			}
+			currentCmd := m.CustomBuildCmd
+			if currentCmd == "" {
+				target := runner.DetectBuildTarget(m.WorkingDir, targetFile)
+				currentCmd = target.Command
+			}
+			if currentCmd == "" {
+				currentCmd = "go build ."
+			}
+			m.Modal.OpenBuildCommand(currentCmd)
+			m.updateFocus()
+			return m, nil
 
 		case "ctrl+r":
 			if m.Editor.Mode == editor.ModeEdit {
@@ -412,8 +462,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if targetFile == "" && m.FileTree.SelectedItem() != nil {
 				targetFile = m.FileTree.SelectedItem().Path
 			}
-			target := runner.DetectRunTarget(m.WorkingDir, targetFile)
-			cmdToRun := target.Command
+			cmdToRun := m.CustomRunCmd
+			desc := "Custom Run"
+			if cmdToRun == "" {
+				target := runner.DetectRunTarget(m.WorkingDir, targetFile)
+				cmdToRun = target.Command
+				desc = target.Description
+			}
 			if cmdToRun == "" {
 				cmdToRun = "./main"
 			}
@@ -421,8 +476,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateFocus()
 			m.Console.IsRunning = true
 			m.Console.RunningTitle = cmdToRun
-			m.StatusMessage = fmt.Sprintf("Running (%s)...", target.Description)
+			m.StatusMessage = fmt.Sprintf("Running (%s)...", desc)
 			return m, runner.RunCommandCmd(m.WorkingDir, cmdToRun)
+
+		case "alt+r":
+			targetFile := m.Editor.Buffer.FilePath
+			if m.ActivePane == PaneFiles && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			} else if targetFile == "" && m.FileTree.SelectedItem() != nil {
+				targetFile = m.FileTree.SelectedItem().Path
+			}
+			currentCmd := m.CustomRunCmd
+			if currentCmd == "" {
+				target := runner.DetectRunTarget(m.WorkingDir, targetFile)
+				currentCmd = target.Command
+			}
+			if currentCmd == "" {
+				currentCmd = "./main"
+			}
+			m.Modal.OpenRunCommand(currentCmd)
+			m.updateFocus()
+			return m, nil
 
 		case "ctrl+x":
 			defaultCmd := ""

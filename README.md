@@ -24,7 +24,9 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Ctrl+E` | Toggle View / Edit Mode | Global | Switches between syntax-highlighted View mode and active Textarea editing |
 | `Ctrl+S` | Save File | Global | Saves modified buffer to disk |
 | `Ctrl+B` | Build Project | Global | Auto-detects build command (`go build .`, `make`, `gcc`) and compiles asynchronously |
-| `Ctrl+R` | Run Program | Global | Runs executable: strips extension for `.go`/`.c` (`./main`, `./app`) or executes source for `.py`/`.rb`/`.sh` (`python3`, `ruby`, `bash`) |
+| `Alt+B` | Configure Build | Global | Opens shell dialog pre-filled with current build command and saves custom command for session |
+| `Ctrl+R` | Run Program | Global | Runs executable or detected run target asynchronously |
+| `Alt+R` | Configure Run | Global | Opens shell dialog pre-filled with current run command and saves custom command for session |
 | `Ctrl+X` | Shell Command | Global | Opens shell execution bar (`$ `) to run arbitrary CLI commands |
 | `Ctrl+G` | Gemini AI Assistant | Global | Context-aware AI: **Update File** (in Editor), **Generate File** (in Files), or **Q&A** (in Console) |
 | `Ctrl+Q` | Quit | Global | Exits TIDE |
@@ -33,8 +35,10 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Shift+Esc` | Focus Console | Global | Immediately switches focus to the Output / Console panel |
 | `.` | Toggle Hidden Files | Files | Toggles display of hidden dot files and directories (`.gitignore`, `.github`, etc.) |
 | `r` | Refresh Files | Files | Re-scans the current workspace directory from disk |
+| `Alt+Backspace` | Delete File / Dir | Files | Opens shell dialog pre-filled with `rm -f` or `rm -rf` command for confirmation |
 | `Ctrl+Z` (or `F11`) | Toggle Fullscreen / Zen | Global | Expands the code editor to full screen, hiding files and console |
 | `z` | Toggle Fullscreen | Editor (View) | Quick full-screen toggle when inside Editor View mode |
+| `e` | Enter Edit Mode | Editor (View) | Enters Edit mode with cursor at visible line |
 | `w` | Toggle Word Wrap | Editor (View) | Toggles word-wrapping on long lines with `↳` continuation indicators |
 | `←` / `→` (or `h` / `l`) | Horizontal Scroll | Editor (View) | Scrolls left/right through long lines when word-wrap is disabled |
 | `0` / `Home` | Scroll to Start | Editor (View) | Resets horizontal scroll offset back to column 0 |
