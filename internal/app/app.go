@@ -952,7 +952,7 @@ func (m Model) View() string {
 	consoleInnerH := max(1, consoleH-2)
 
 	// 1. Header Bar (exactly 1 line)
-	logo := HeaderLogoStyle.Render("🌊 TIDE v0.1")
+	logo := HeaderLogoStyle.Render("🌊 TIDE v0.2")
 
 	dirDisplay := m.WorkingDir
 	home, _ := os.UserHomeDir()
