@@ -10,6 +10,7 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 * **Chroma-Powered Syntax Highlighting:** View mode with full-color syntax highlighting across Go, C, C++, Rust, Python, and more.
 * **Dual-Mode Text Editing:** Seamlessly switch between fast Chroma inspection and active `bubbles/textarea` editing (`Ctrl+E`).
 * **Smart Build Engine & Error Line Gutter:** Auto-detects Go/C/Make project configurations (`Ctrl+R`), parses compiler diagnostics (`file:line:col`), and highlights error lines with bold red indicators directly in the code viewer.
+* **Automatic Git Integration:** Seamless Git detection with title bar branch/dirty indicators, subtle changed file color highlights in the file tree, and a one-action Add, Commit & Push dialog (`Ctrl+Shift+G` or `Alt+G`).
 * **Arbitrary Shell Runner:** Non-blocking asynchronous command execution (`Ctrl+X`) streaming output directly into the console panel.
 * **Gemini AI Assistant Integration:** Context-aware AI helper (`Ctrl+G`) automatically attaching your active code buffer and compiler error trace to stream direct explanations and fixes in markdown.
 
@@ -29,6 +30,7 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Alt+R` | Configure Run | Global | Opens shell dialog pre-filled with current run command and saves custom command for session |
 | `Ctrl+X` | Shell Command | Global | Opens shell execution bar (`$ `) to run arbitrary CLI commands |
 | `Ctrl+G` | Gemini AI Assistant | Global | Context-aware AI: **Update File** (in Editor), **Generate File** (in Files), or **Q&A** (in Console) |
+| `Ctrl+Shift+G` (or `Alt+G`) | Git Add, Commit & Push | Global | Automatically enabled in git repositories: prompts for message and stages, commits, and pushes in one action |
 | `Ctrl+Q` | Quit | Global | Exits TIDE |
 | `Tab` / `Shift+Tab` | Cycle Focus | Global | Cycles focus between Files, Editor, and Console panels |
 | `Esc` | Focus Editor / Cancel | Global | Focuses the Editor pane (or exits Edit mode / closes open modals) |
@@ -123,7 +125,8 @@ tide/
 │   ├── console/          # Output viewport with Glamour markdown rendering
 │   ├── editor/           # Chroma syntax highlighter & textarea buffer
 │   ├── filetree/         # File explorer sidebar component
-│   ├── modal/            # Popover dialogs (New File, Shell, Gemini, Key)
+│   ├── git/              # Git repo detection, status inspection & sync builder
+│   ├── modal/            # Popover dialogs (New File, Shell, Gemini, Git, Key)
 │   └── runner/           # Async process runner, builder & error regex parser
 ├── SPECS.md
 ├── VERSIONS.md           # Release changelog & version highlights

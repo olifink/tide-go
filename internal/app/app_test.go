@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"tide/internal/ai"
 	"tide/internal/editor"
+	"tide/internal/git"
 	"tide/internal/modal"
 	"tide/internal/runner"
 )
@@ -687,3 +689,166 @@ func TestAppAltRConfiguresRunCommand(t *testing.T) {
 		t.Errorf("expected Ctrl+R to run './build/server --port=8080', got %q", m.Console.RunningTitle)
 	}
 }
+
+func initTestGitRepoForApp(t *testing.T) string {
+	t.Helper()
+	tmpDir, err := os.MkdirTemp("", "tide-app-git-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmdInit := exec.Command("git", "init", "-b", "main")
+	cmdInit.Dir = tmpDir
+	if err := cmdInit.Run(); err != nil {
+		cmdInitOld := exec.Command("git", "init")
+		cmdInitOld.Dir = tmpDir
+		if err := cmdInitOld.Run(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cmdCfg1 := exec.Command("git", "config", "user.name", "TideTester")
+	cmdCfg1.Dir = tmpDir
+	_ = cmdCfg1.Run()
+	cmdCfg2 := exec.Command("git", "config", "user.email", "tester@tide.local")
+	cmdCfg2.Dir = tmpDir
+	_ = cmdCfg2.Run()
+
+	return tmpDir
+}
+
+func TestAppGitModeIntegration(t *testing.T) {
+	if !git.IsInstalled() {
+		t.Skip("git not installed")
+	}
+
+	repoDir := initTestGitRepoForApp(t)
+	defer os.RemoveAll(repoDir)
+
+	// Create initial file and commit
+	initialFile := filepath.Join(repoDir, "main.go")
+	_ = os.WriteFile(initialFile, []byte("package main\n\nfunc main() {}\n"), 0644)
+	cmdAdd := exec.Command("git", "add", "main.go")
+	cmdAdd.Dir = repoDir
+	_ = cmdAdd.Run()
+	cmdCommit := exec.Command("git", "commit", "-m", "initial")
+	cmdCommit.Dir = repoDir
+	_ = cmdCommit.Run()
+
+	m := InitialModel(repoDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// 1. Verify Git mode detected
+	if !m.GitStatus.IsRepo {
+		t.Fatalf("expected git repo detected")
+	}
+	if m.GitStatus.HasChanges {
+		t.Errorf("expected clean repo initially")
+	}
+
+	// 2. Title bar contains git branch
+	viewClean := m.View()
+	if !strings.Contains(viewClean, "git:main") {
+		t.Errorf("expected title bar to contain 'git:main', got:\n%s", viewClean)
+	}
+
+	// 3. Create a change and verify title bar shows git:main*
+	_ = os.WriteFile(filepath.Join(repoDir, "newfile.txt"), []byte("new content"), 0644)
+	m.refreshWorkspace()
+
+	if !m.GitStatus.HasChanges {
+		t.Errorf("expected git status to have changes after adding new file")
+	}
+	viewDirty := m.View()
+	if !strings.Contains(viewDirty, "git:main*") {
+		t.Errorf("expected title bar to contain 'git:main*', got:\n%s", viewDirty)
+	}
+}
+
+func TestAppGitSyncDialogAndAction(t *testing.T) {
+	if !git.IsInstalled() {
+		t.Skip("git not installed")
+	}
+
+	repoDir := initTestGitRepoForApp(t)
+	defer os.RemoveAll(repoDir)
+
+	_ = os.WriteFile(filepath.Join(repoDir, "file.txt"), []byte("data"), 0644)
+
+	m := InitialModel(repoDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Trigger Git Sync with Ctrl+Shift+G / Alt+G
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}, Alt: true})
+	m = newM.(Model)
+
+	if !m.Modal.Active {
+		t.Fatalf("expected GitSync modal to be active after Alt+G")
+	}
+	if m.Modal.Type != modal.GitSync {
+		t.Errorf("expected ModalType GitSync, got %v", m.Modal.Type)
+	}
+
+	// Set commit message and confirm
+	m.Modal.Input.SetValue("Add initial file")
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(Model)
+
+	if m.Modal.Active {
+		t.Errorf("expected modal to close after submitting")
+	}
+	if m.ActivePane != PaneConsole {
+		t.Errorf("expected active pane to switch to PaneConsole, got %d", m.ActivePane)
+	}
+	if !m.Console.IsRunning {
+		t.Errorf("expected Console.IsRunning to be true")
+	}
+	if !strings.Contains(m.StatusMessage, "Committing & pushing") {
+		t.Errorf("unexpected status message: %s", m.StatusMessage)
+	}
+	if cmd == nil {
+		t.Errorf("expected tea.Cmd returned to run git command")
+	}
+
+	// Test ProcessFinishedMsg with exit code 0 for git sync
+	procMsg := runner.ProcessFinishedMsg{
+		Command:  "git add -A && git commit -m 'Add initial file' && git push",
+		Output:   "[main 1234567] Add initial file\n 1 file changed\n",
+		ExitCode: 0,
+	}
+	newM, _ = m.Update(procMsg)
+	m = newM.(Model)
+
+	if !strings.Contains(m.StatusMessage, "pushed successfully") {
+		t.Errorf("expected success status message, got %s", m.StatusMessage)
+	}
+}
+
+func TestAppGitSyncOutsideRepo(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-app-nogit-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	m := InitialModel(tmpDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Trigger Git Sync with Alt+G in non-repo
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}, Alt: true})
+	m = newM.(Model)
+
+	if m.Modal.Active {
+		t.Errorf("GitSync modal should not open outside a git repository")
+	}
+	if !strings.Contains(m.StatusMessage, "Not a git repository") {
+		t.Errorf("expected 'Not a git repository' status message, got: %s", m.StatusMessage)
+	}
+}
+

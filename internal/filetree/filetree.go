@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"tide/internal/git"
 )
 
 // FileItem represents a file or directory entry in the tree.
@@ -29,9 +30,15 @@ type Model struct {
 	Cursor       int
 	ActiveFile   string // File currently loaded in editor
 	ShowHidden   bool   // When true, dot files & folders (.git, .github, .gitignore) are visible
+	GitStatuses  map[string]git.FileStatus
 	Width        int
 	Height       int
 	Focused      bool
+}
+
+// SetGitStatuses updates the file tree with the latest git statuses.
+func (m *Model) SetGitStatuses(statuses map[string]git.FileStatus) {
+	m.GitStatuses = statuses
 }
 
 // New creates and initializes a file tree model for the given root directory.
@@ -315,6 +322,23 @@ func (m *Model) View() string {
 		// Format line text
 		lineStr := cursorMarker + " " + indent + icon + item.Name
 
+		// Git status check
+		var gitSt git.FileStatus
+		hasGit := false
+		if m.GitStatuses != nil {
+			gitSt, hasGit = m.GitStatuses[item.Path]
+		}
+		dirHasChanges := false
+		if item.IsDir && m.GitStatuses != nil {
+			prefix := item.Path + string(filepath.Separator)
+			for p := range m.GitStatuses {
+				if strings.HasPrefix(p, prefix) {
+					dirHasChanges = true
+					break
+				}
+			}
+		}
+
 		// Apply styling
 		var style lipgloss.Style
 		if isCursor {
@@ -323,11 +347,25 @@ func (m *Model) View() string {
 				Background(lipgloss.Color("#5A5288")).
 				Bold(true)
 		} else if isActive {
-			style = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#74C7EC")).
-				Bold(true)
+			if hasGit && gitSt.StatusType == git.StatusModified {
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#F9E2AF")).
+					Bold(true)
+			} else if hasGit && (gitSt.StatusType == git.StatusUntracked || gitSt.StatusType == git.StatusAdded) {
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#A6E3A1")).
+					Bold(true)
+			} else {
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#74C7EC")).
+					Bold(true)
+			}
 		} else if item.IsDir {
-			if isDot {
+			if dirHasChanges {
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#F9E2AF")).
+					Bold(true)
+			} else if isDot {
 				style = lipgloss.NewStyle().
 					Foreground(lipgloss.Color("#6272A4")).
 					Bold(true)
@@ -337,9 +375,52 @@ func (m *Model) View() string {
 					Bold(true)
 			}
 		} else if item.IsExecutable {
-			style = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#50FA7B")).
-				Bold(true)
+			if hasGit {
+				switch gitSt.StatusType {
+				case git.StatusModified:
+					style = lipgloss.NewStyle().
+						Foreground(lipgloss.Color("#F9E2AF")).
+						Bold(true)
+				case git.StatusAdded, git.StatusUntracked:
+					style = lipgloss.NewStyle().
+						Foreground(lipgloss.Color("#A6E3A1")).
+						Bold(true)
+				case git.StatusDeleted:
+					style = lipgloss.NewStyle().
+						Foreground(lipgloss.Color("#F38BA8")).
+						Bold(true)
+				default:
+					style = lipgloss.NewStyle().
+						Foreground(lipgloss.Color("#50FA7B")).
+						Bold(true)
+				}
+			} else {
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#50FA7B")).
+					Bold(true)
+			}
+		} else if hasGit {
+			switch gitSt.StatusType {
+			case git.StatusModified:
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#F9E2AF"))
+			case git.StatusAdded, git.StatusUntracked:
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#A6E3A1"))
+			case git.StatusDeleted:
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#F38BA8"))
+			case git.StatusConflict:
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#FAB387")).
+					Bold(true)
+			case git.StatusRenamed:
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#74C7EC"))
+			default:
+				style = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("#F8F8F2"))
+			}
 		} else if isDot {
 			style = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#6272A4"))

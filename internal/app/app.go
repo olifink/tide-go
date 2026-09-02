@@ -15,6 +15,7 @@ import (
 	"tide/internal/console"
 	"tide/internal/editor"
 	"tide/internal/filetree"
+	"tide/internal/git"
 	"tide/internal/modal"
 	"tide/internal/runner"
 )
@@ -30,19 +31,19 @@ const (
 
 // Model is the top-level Bubble Tea model for TIDE.
 type Model struct {
-	Config        config.Config
-	WorkingDir    string
-	ActivePane    Pane
-	FileTree      filetree.Model
-	Editor        editor.Model
-	Console       console.Model
-	Modal         modal.Model
-	Keys          KeyMap
-	Width         int
-	Height        int
-	Diagnostics   []runner.Diagnostic
-	StatusMessage string
-	AIChannel     chan ai.AIChunkMsg
+	Config           config.Config
+	WorkingDir       string
+	ActivePane       Pane
+	FileTree         filetree.Model
+	Editor           editor.Model
+	Console          console.Model
+	Modal            modal.Model
+	Keys             KeyMap
+	Width            int
+	Height           int
+	Diagnostics      []runner.Diagnostic
+	StatusMessage    string
+	AIChannel        chan ai.AIChunkMsg
 	pendingAIQ       string
 	activeAIMode     ai.AIMode
 	aiResponse       string
@@ -50,6 +51,8 @@ type Model struct {
 	EditorFullscreen bool
 	CustomBuildCmd   string
 	CustomRunCmd     string
+	GitInstalled     bool
+	GitStatus        git.RepoStatus
 }
 
 // InitialModel initializes the TIDE application model.
@@ -96,6 +99,15 @@ func InitialModel(startPath string) Model {
 	con := console.New(80, 8)
 	mod := modal.New()
 
+	gitInstalled := git.IsInstalled()
+	var gitStatus git.RepoStatus
+	if gitInstalled {
+		gitStatus = git.GetStatus(workingDir)
+		if gitStatus.IsRepo {
+			ft.SetGitStatuses(gitStatus.FileStatuses)
+		}
+	}
+
 	m := Model{
 		Config:        cfg,
 		WorkingDir:    workingDir,
@@ -106,6 +118,8 @@ func InitialModel(startPath string) Model {
 		Modal:         mod,
 		Keys:          DefaultKeyMap(),
 		StatusMessage: statusMsg,
+		GitInstalled:  gitInstalled,
+		GitStatus:     gitStatus,
 	}
 
 	if initialFile != "" {
@@ -160,6 +174,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ActivePane = PaneConsole
 		m.updateFocus()
 		isBuild := strings.HasPrefix(msg.Command, "go build") || strings.HasPrefix(msg.Command, "make") || strings.HasPrefix(msg.Command, "gcc") || strings.HasPrefix(msg.Command, "g++") || strings.HasPrefix(msg.Command, "cargo build") || strings.HasPrefix(msg.Command, "rustc")
+		isGitSync := strings.HasPrefix(msg.Command, "git add") && strings.Contains(msg.Command, "git commit")
 		m.Console.AddCommandResult(msg, isBuild)
 		m.Diagnostics = msg.Diagnostics
 		m.Editor.SetDiagnostics(m.Diagnostics)
@@ -167,13 +182,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Diagnostics) > 0 {
 			m.StatusMessage = fmt.Sprintf("Build finished with %d diagnostic(s)", len(msg.Diagnostics))
 		} else if msg.ExitCode == 0 {
-			if isBuild {
+			if isGitSync {
+				m.StatusMessage = "Git: Changes committed & pushed successfully!"
+			} else if isBuild {
 				m.StatusMessage = "Build succeeded! (Press ^R to run)"
 			} else {
 				m.StatusMessage = "Run finished successfully (exit 0)"
 			}
 		} else {
-			m.StatusMessage = fmt.Sprintf("Process exited with code %d", msg.ExitCode)
+			if isGitSync {
+				m.StatusMessage = fmt.Sprintf("Git sync failed (exit %d - see console)", msg.ExitCode)
+			} else {
+				m.StatusMessage = fmt.Sprintf("Process exited with code %d", msg.ExitCode)
+			}
 		}
 		return m, nil
 
@@ -354,6 +375,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.pendingAIQ = ""
 						return m, m.triggerGeminiAI(q, val, mode)
 					}
+
+				case modal.GitSync:
+					if m.Editor.Mode == editor.ModeEdit {
+						m.Editor.ToggleMode()
+					}
+					m.ActivePane = PaneConsole
+					m.updateFocus()
+					cmdStr := git.BuildCommitAndPushCmd(val)
+					m.Console.IsRunning = true
+					m.Console.RunningTitle = "git add && commit && push"
+					m.StatusMessage = fmt.Sprintf("Git: Committing & pushing (%s)...", val)
+					return m, runner.RunCommandCmd(m.WorkingDir, cmdStr)
 				}
 				return m, nil
 			}
@@ -402,8 +435,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.StatusMessage = fmt.Sprintf("Error saving: %s", err.Error())
 				} else {
 					m.StatusMessage = fmt.Sprintf("Saved %s", m.Editor.Buffer.FileName())
+					m.refreshWorkspace()
 				}
 			}
+			return m, nil
+
+		case "ctrl+shift+g", "ctrl+G", "ctrl+shift+G", "alt+g", "alt+G":
+			if !m.GitInstalled {
+				m.StatusMessage = "Git is not installed on system"
+				return m, nil
+			}
+			if !m.GitStatus.IsRepo {
+				m.StatusMessage = "Not a git repository"
+				return m, nil
+			}
+			totalChanges := m.GitStatus.ModifiedCount + m.GitStatus.AddedCount + m.GitStatus.UntrackedCount + m.GitStatus.DeletedCount
+			m.Modal.OpenGitSync(m.GitStatus.Branch, totalChanges)
+			m.updateFocus()
 			return m, nil
 
 		case "ctrl+b":
@@ -758,6 +806,15 @@ func (m *Model) triggerGeminiAI(userQuery string, apiKey string, mode ai.AIMode)
 }
 
 func (m *Model) refreshWorkspace() {
+	if m.GitInstalled {
+		m.GitStatus = git.GetStatus(m.WorkingDir)
+		if m.GitStatus.IsRepo {
+			m.FileTree.SetGitStatuses(m.GitStatus.FileStatuses)
+		} else {
+			m.FileTree.SetGitStatuses(nil)
+		}
+	}
+
 	// 1. Refresh file explorer sidebar
 	m.FileTree.Refresh()
 
@@ -964,6 +1021,19 @@ func (m Model) View() string {
 	fileName := m.Editor.Buffer.FileName()
 	activeFileBadge := HeaderFileStyle.Render(fmt.Sprintf("Active: %s", fileName))
 
+	gitBadge := ""
+	if m.GitStatus.IsRepo {
+		branchName := m.GitStatus.Branch
+		if branchName == "" {
+			branchName = "HEAD"
+		}
+		if m.GitStatus.HasChanges {
+			gitBadge = HeaderGitDirtyStyle.Render(fmt.Sprintf("git:%s*", branchName))
+		} else {
+			gitBadge = HeaderGitStyle.Render(fmt.Sprintf("git:%s", branchName))
+		}
+	}
+
 	modBadge := ""
 	if m.Editor.Buffer.IsModified {
 		modBadge = HeaderModStyle.Render("[MOD]")
@@ -974,7 +1044,20 @@ func (m Model) View() string {
 		statusText = lipgloss.NewStyle().Foreground(ColorSuccess).Render(" • " + m.StatusMessage)
 	}
 
-	headerLeft := lipgloss.JoinHorizontal(lipgloss.Center, logo, dirBadge, activeFileBadge, modBadge, statusText)
+	var headerParts []string
+	headerParts = append(headerParts, logo, dirBadge)
+	if gitBadge != "" {
+		headerParts = append(headerParts, gitBadge)
+	}
+	headerParts = append(headerParts, activeFileBadge)
+	if modBadge != "" {
+		headerParts = append(headerParts, modBadge)
+	}
+	if statusText != "" {
+		headerParts = append(headerParts, statusText)
+	}
+
+	headerLeft := lipgloss.JoinHorizontal(lipgloss.Center, headerParts...)
 	if ansi.StringWidth(headerLeft) > m.Width {
 		headerLeft = ansi.Truncate(headerLeft, m.Width, "")
 	}

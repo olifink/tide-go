@@ -20,6 +20,7 @@ const (
 	APIKey
 	BuildCommand
 	RunCommand
+	GitSync
 )
 
 // Model represents a popover dialog modal.
@@ -90,6 +91,25 @@ func (m *Model) OpenRunCommand(defaultCmd string) {
 	m.Description = "Enter run command for this session (saved for future ^R):"
 	m.Input.SetValue(defaultCmd)
 	m.Input.Placeholder = "e.g. ./main --dev, python3 script.py, make run"
+	m.Input.EchoMode = textinput.EchoNormal
+	m.Input.Focus()
+	m.Active = true
+}
+
+// OpenGitSync activates the git add, commit, and push modal dialog.
+func (m *Model) OpenGitSync(branch string, changesCount int) {
+	m.Type = GitSync
+	if branch == "" {
+		branch = "main"
+	}
+	m.Title = fmt.Sprintf("Git: Add, Commit & Push (%s)", branch)
+	if changesCount > 0 {
+		m.Description = fmt.Sprintf("Enter commit message for %d changed file(s) (will stage all, commit & push):", changesCount)
+	} else {
+		m.Description = "Enter commit message (will stage all changes, commit & push):"
+	}
+	m.Input.SetValue("")
+	m.Input.Placeholder = "e.g. feat: add new feature, fix: bug description"
 	m.Input.EchoMode = textinput.EchoNormal
 	m.Input.Focus()
 	m.Active = true
@@ -206,12 +226,17 @@ func (m *Model) View() string {
 		escHint = "[Esc] Clear"
 	}
 
+	confirmHint := "[Enter] Confirm"
+	if m.Type == GitSync {
+		confirmHint = "[Enter] Commit & Push"
+	}
+
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
 		titleStyle.Render(m.Title),
 		descStyle.Render(m.Description),
 		m.Input.View(),
-		hintStyle.Render(fmt.Sprintf("[Enter] Confirm  •  %s", escHint)),
+		hintStyle.Render(fmt.Sprintf("%s  •  %s", confirmHint, escHint)),
 	)
 
 	return boxStyle.Render(content)

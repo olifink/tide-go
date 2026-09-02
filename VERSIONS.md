@@ -6,6 +6,13 @@ All notable changes, version highlights, and feature additions for TIDE are docu
 
 ## [v0.2.0] - 2026-08-30
 
+### 🌿 Automatic Git Mode & One-Action Sync
+* **Automatic Detection:** Automatically discovers Git repositories and verifies system `git` installation upon startup without requiring manual configuration.
+* **Title Bar Git Badge:** Displays active branch and status (`git:main` when clean, `git:main*` in warm peach when uncommitted changes exist).
+* **Subtle Changed File Highlighting:** Distinct, subtle color highlights in the Files sidebar for modified (`#F9E2AF` peach), untracked/added (`#A6E3A1` green), and deleted files (`#F38BA8` red), with directory propagation.
+* **One-Action Git Sync (`Ctrl+Shift+G` or `Alt+G`):** Opens a dedicated Git modal to enter a commit message that automatically executes `git add -A && git commit -m "<msg>" && git push` in a single non-blocking action streaming output directly to the Console.
+* **Zero UI Footer Clutter:** Designed for maximum discoverability and zero visual bloat without adding unnecessary hints to the persistent Pico footer bar.
+
 ### 🖥️ Full-Screen / Zen Editor Mode
 * **Full-Screen Toggle:** Press `Ctrl+Z` (or `F11`) globally or single-key `z` in View mode to expand the code editor to 100% of terminal space, hiding the Files sidebar and Console.
 * **Auto Full-Screen on Launch:** Launching with a specific file parameter (e.g. `tide main.go`, `tide script.py`) automatically enters full-screen mode for an instant distraction-free editing workflow.

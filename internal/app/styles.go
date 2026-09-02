@@ -30,6 +30,16 @@ var (
 			Bold(true).
 			Padding(0, 1)
 
+	HeaderGitStyle = lipgloss.NewStyle().
+			Foreground(ColorAccent).
+			Bold(true).
+			Padding(0, 1)
+
+	HeaderGitDirtyStyle = lipgloss.NewStyle().
+			Foreground(ColorWarning).
+			Bold(true).
+			Padding(0, 1)
+
 	HeaderFileStyle = lipgloss.NewStyle().
 			Foreground(ColorFg).
 			Padding(0, 1)

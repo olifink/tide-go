@@ -20,6 +20,7 @@ type KeyMap struct {
 	Fullscreen     key.Binding
 	ConfigureBuild key.Binding
 	ConfigureRun   key.Binding
+	GitSync        key.Binding
 }
 
 // DefaultKeyMap returns the standard key bindings.
@@ -88,6 +89,10 @@ func DefaultKeyMap() KeyMap {
 		Fullscreen: key.NewBinding(
 			key.WithKeys("ctrl+z", "f11"),
 			key.WithHelp("^Z", "Fullscreen"),
+		),
+		GitSync: key.NewBinding(
+			key.WithKeys("ctrl+shift+g", "ctrl+G", "ctrl+shift+G", "alt+g"),
+			key.WithHelp("Ctrl+Shift+G", "Git Sync"),
 		),
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"tide/internal/git"
 )
 
 func TestFileTreeOperations(t *testing.T) {
@@ -133,3 +134,37 @@ func TestFileTreeToggleHidden(t *testing.T) {
 		}
 	}
 }
+
+func TestFileTreeGitStatusHighlighting(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tide-test-tree-git-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	modPath := filepath.Join(tmpDir, "modified.go")
+	_ = os.WriteFile(modPath, []byte("package main"), 0644)
+	newPath := filepath.Join(tmpDir, "untracked.go")
+	_ = os.WriteFile(newPath, []byte("package main"), 0644)
+
+	ft := New(tmpDir, 40, 20)
+	statuses := map[string]git.FileStatus{
+		modPath: {
+			Path:       "modified.go",
+			AbsPath:    modPath,
+			StatusType: git.StatusModified,
+		},
+		newPath: {
+			Path:       "untracked.go",
+			AbsPath:    newPath,
+			StatusType: git.StatusUntracked,
+		},
+	}
+	ft.SetGitStatuses(statuses)
+
+	view := ft.View()
+	if !strings.Contains(view, "modified.go") || !strings.Contains(view, "untracked.go") {
+		t.Errorf("expected view to contain files, got:\n%s", view)
+	}
+}
+

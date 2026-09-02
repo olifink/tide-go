@@ -71,4 +71,15 @@ func TestModalLifecycle(t *testing.T) {
 	if !m.Active || m.Type != RunCommand || m.Value() != "./bin/custom-run --arg" {
 		t.Errorf("expected RunCommand modal with value, got: %+v", m)
 	}
+
+	m.OpenGitSync("feature-branch", 3)
+	if !m.Active || m.Type != GitSync {
+		t.Errorf("expected GitSync modal active")
+	}
+	if !strings.Contains(m.Title, "feature-branch") {
+		t.Errorf("expected title to contain feature-branch, got: %s", m.Title)
+	}
+	if !strings.Contains(m.Description, "3 changed file(s)") {
+		t.Errorf("expected description to mention 3 changed file(s), got: %s", m.Description)
+	}
 }
