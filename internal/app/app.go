@@ -175,6 +175,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateFocus()
 		isBuild := strings.HasPrefix(msg.Command, "go build") || strings.HasPrefix(msg.Command, "make") || strings.HasPrefix(msg.Command, "gcc") || strings.HasPrefix(msg.Command, "g++") || strings.HasPrefix(msg.Command, "cargo build") || strings.HasPrefix(msg.Command, "rustc")
 		isGitSync := strings.HasPrefix(msg.Command, "git add") && strings.Contains(msg.Command, "git commit")
+		isGitPush := strings.Contains(msg.Command, "git push")
 		m.Console.AddCommandResult(msg, isBuild)
 		m.Diagnostics = msg.Diagnostics
 		m.Editor.SetDiagnostics(m.Diagnostics)
@@ -183,7 +184,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.StatusMessage = fmt.Sprintf("Build finished with %d diagnostic(s)", len(msg.Diagnostics))
 		} else if msg.ExitCode == 0 {
 			if isGitSync {
-				m.StatusMessage = "Git: Changes committed & pushed successfully!"
+				if isGitPush {
+					m.StatusMessage = "Git: Changes committed & pushed successfully!"
+				} else {
+					m.StatusMessage = "Git: Changes committed locally!"
+				}
 			} else if isBuild {
 				m.StatusMessage = "Build succeeded! (Press ^R to run)"
 			} else {
@@ -191,7 +196,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			if isGitSync {
-				m.StatusMessage = fmt.Sprintf("Git sync failed (exit %d - see console)", msg.ExitCode)
+				if isGitPush {
+					m.StatusMessage = fmt.Sprintf("Git sync failed (exit %d - see console)", msg.ExitCode)
+				} else {
+					m.StatusMessage = fmt.Sprintf("Git commit failed (exit %d - see console)", msg.ExitCode)
+				}
 			} else {
 				m.StatusMessage = fmt.Sprintf("Process exited with code %d", msg.ExitCode)
 			}
@@ -289,9 +298,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.updateFocus()
 				return m, nil
 
+			case "tab", "shift+tab", "alt+p", "ctrl+p":
+				if m.Modal.Type == modal.GitSync {
+					m.Modal.TogglePush()
+					return m, nil
+				}
+
+			case "ctrl+enter", "alt+enter":
+				if m.Modal.Type == modal.GitSync {
+					m.Modal.PushToRemote = true
+					val := strings.TrimSpace(m.Modal.Value())
+					m.Modal.Close()
+					m.updateFocus()
+					if val == "" {
+						return m, nil
+					}
+					if m.Editor.Mode == editor.ModeEdit {
+						m.Editor.ToggleMode()
+					}
+					m.ActivePane = PaneConsole
+					m.updateFocus()
+					cmdStr := git.BuildCommitCmd(val, true)
+					m.Console.IsRunning = true
+					m.Console.RunningTitle = "git add && commit && push"
+					m.StatusMessage = fmt.Sprintf("Git: Committing & pushing (%s)...", val)
+					return m, runner.RunCommandCmd(m.WorkingDir, cmdStr)
+				}
+
 			case "enter":
 				val := strings.TrimSpace(m.Modal.Value())
 				modalType := m.Modal.Type
+				push := m.Modal.PushToRemote
 				m.Modal.Close()
 				m.updateFocus()
 
@@ -382,10 +419,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.ActivePane = PaneConsole
 					m.updateFocus()
-					cmdStr := git.BuildCommitAndPushCmd(val)
+					cmdStr := git.BuildCommitCmd(val, push)
 					m.Console.IsRunning = true
-					m.Console.RunningTitle = "git add && commit && push"
-					m.StatusMessage = fmt.Sprintf("Git: Committing & pushing (%s)...", val)
+					if push {
+						m.Console.RunningTitle = "git add && commit && push"
+						m.StatusMessage = fmt.Sprintf("Git: Committing & pushing (%s)...", val)
+					} else {
+						m.Console.RunningTitle = "git add && commit"
+						m.StatusMessage = fmt.Sprintf("Git: Committing locally (%s)...", val)
+					}
 					return m, runner.RunCommandCmd(m.WorkingDir, cmdStr)
 				}
 				return m, nil

@@ -30,7 +30,7 @@ A minimalist, zero-bloat, discoverable TUI development environment for modern Li
 | `Alt+R` | Configure Run | Global | Opens shell dialog pre-filled with current run command and saves custom command for session |
 | `Ctrl+X` | Shell Command | Global | Opens shell execution bar (`$ `) to run arbitrary CLI commands |
 | `Ctrl+G` | Gemini AI Assistant | Global | Context-aware AI: **Update File** (in Editor), **Generate File** (in Files), or **Q&A** (in Console) |
-| `Ctrl+Shift+G` (or `Alt+G`) | Git Add, Commit & Push | Global | Automatically enabled in git repositories: prompts for message and stages, commits, and pushes in one action |
+| `Ctrl+Shift+G` (or `Alt+G`) | Git Commit & Push | Global | Automatically enabled in git repositories: prompts for message with optional `[x] Push to remote` checkbox (`Tab` to toggle, `Ctrl+Enter` to push) |
 | `Ctrl+Q` | Quit | Global | Exits TIDE |
 | `Tab` / `Shift+Tab` | Cycle Focus | Global | Cycles focus between Files, Editor, and Console panels |
 | `Esc` | Focus Editor / Cancel | Global | Focuses the Editor pane (or exits Edit mode / closes open modals) |

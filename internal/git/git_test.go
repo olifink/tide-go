@@ -121,9 +121,20 @@ func TestGitStatusInRepo(t *testing.T) {
 }
 
 func TestBuildCommitAndPushCmd(t *testing.T) {
-	cmd := BuildCommitAndPushCmd("Fix issue with 'quotes' and $vars")
-	expected := "git add -A && git commit -m 'Fix issue with '\\''quotes'\\'' and $vars' && git push"
-	if cmd != expected {
-		t.Errorf("expected command %q, got %q", expected, cmd)
+	cmdWithPush := BuildCommitCmd("Fix issue with 'quotes' and $vars", true)
+	expectedPush := "git add -A && git commit -m 'Fix issue with '\\''quotes'\\'' and $vars' && git push"
+	if cmdWithPush != expectedPush {
+		t.Errorf("expected command %q, got %q", expectedPush, cmdWithPush)
+	}
+
+	cmdNoPush := BuildCommitCmd("Fix issue locally", false)
+	expectedNoPush := "git add -A && git commit -m 'Fix issue locally'"
+	if cmdNoPush != expectedNoPush {
+		t.Errorf("expected command %q, got %q", expectedNoPush, cmdNoPush)
+	}
+
+	// Wrapper test
+	if BuildCommitAndPushCmd("test") != BuildCommitCmd("test", true) {
+		t.Errorf("expected wrapper to match BuildCommitCmd(msg, true)")
 	}
 }

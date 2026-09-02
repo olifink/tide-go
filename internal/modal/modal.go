@@ -25,14 +25,15 @@ const (
 
 // Model represents a popover dialog modal.
 type Model struct {
-	Type        ModalType
-	Title       string
-	Description string
-	Input       textinput.Model
-	Width       int
-	Height      int
-	Active      bool
-	AIMode      ai.AIMode
+	Type         ModalType
+	Title        string
+	Description  string
+	Input        textinput.Model
+	Width        int
+	Height       int
+	Active       bool
+	AIMode       ai.AIMode
+	PushToRemote bool
 }
 
 // New creates an unactivated modal dialog.
@@ -43,8 +44,9 @@ func New() Model {
 	ti.Width = 50
 
 	return Model{
-		Type:  None,
-		Input: ti,
+		Type:         None,
+		Input:        ti,
+		PushToRemote: true,
 	}
 }
 
@@ -102,17 +104,23 @@ func (m *Model) OpenGitSync(branch string, changesCount int) {
 	if branch == "" {
 		branch = "main"
 	}
-	m.Title = fmt.Sprintf("Git: Add, Commit & Push (%s)", branch)
+	m.Title = fmt.Sprintf("Git: Add & Commit (%s)", branch)
 	if changesCount > 0 {
-		m.Description = fmt.Sprintf("Enter commit message for %d changed file(s) (will stage all, commit & push):", changesCount)
+		m.Description = fmt.Sprintf("Enter commit message for %d changed file(s):", changesCount)
 	} else {
-		m.Description = "Enter commit message (will stage all changes, commit & push):"
+		m.Description = "Enter commit message (will stage all changes):"
 	}
+	m.PushToRemote = true
 	m.Input.SetValue("")
 	m.Input.Placeholder = "e.g. feat: add new feature, fix: bug description"
 	m.Input.EchoMode = textinput.EchoNormal
 	m.Input.Focus()
 	m.Active = true
+}
+
+// TogglePush toggles the PushToRemote flag for GitSync modal.
+func (m *Model) TogglePush() {
+	m.PushToRemote = !m.PushToRemote
 }
 
 // OpenGeminiPrompt activates the Gemini assistant prompt dialog according to active pane mode.
@@ -228,16 +236,37 @@ func (m *Model) View() string {
 
 	confirmHint := "[Enter] Confirm"
 	if m.Type == GitSync {
-		confirmHint = "[Enter] Commit & Push"
+		if m.PushToRemote {
+			confirmHint = "[Enter] Commit & Push"
+		} else {
+			confirmHint = "[Enter] Commit (Local)  •  [Ctrl+Enter] Push"
+		}
 	}
 
-	content := lipgloss.JoinVertical(
-		lipgloss.Left,
+	var elements []string
+	elements = append(elements,
 		titleStyle.Render(m.Title),
 		descStyle.Render(m.Description),
 		m.Input.View(),
-		hintStyle.Render(fmt.Sprintf("%s  •  %s", confirmHint, escHint)),
 	)
+
+	if m.Type == GitSync {
+		checkboxBox := "[ ]"
+		checkColor := lipgloss.Color("#A6ADC8")
+		if m.PushToRemote {
+			checkboxBox = "[x]"
+			checkColor = lipgloss.Color("#A6E3A1")
+		}
+		renderedCheckbox := lipgloss.NewStyle().Foreground(checkColor).Bold(true).Render(checkboxBox) +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD6F4")).Render(" Push to remote") +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("#6272A4")).Render(" (Tab to toggle)")
+
+		elements = append(elements, lipgloss.NewStyle().MarginTop(1).Render(renderedCheckbox))
+	}
+
+	elements = append(elements, hintStyle.Render(fmt.Sprintf("%s  •  %s", confirmHint, escHint)))
+
+	content := lipgloss.JoinVertical(lipgloss.Left, elements...)
 
 	return boxStyle.Render(content)
 }

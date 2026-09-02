@@ -852,3 +852,90 @@ func TestAppGitSyncOutsideRepo(t *testing.T) {
 	}
 }
 
+func TestAppGitSyncTogglePushAndLocalCommit(t *testing.T) {
+	if !git.IsInstalled() {
+		t.Skip("git not installed")
+	}
+
+	repoDir := initTestGitRepoForApp(t)
+	defer os.RemoveAll(repoDir)
+
+	_ = os.WriteFile(filepath.Join(repoDir, "file.txt"), []byte("data"), 0644)
+
+	m := InitialModel(repoDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Open GitSync modal
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}, Alt: true})
+	m = newM.(Model)
+
+	if !m.Modal.PushToRemote {
+		t.Errorf("expected PushToRemote true initially")
+	}
+
+	// Press Tab to toggle push OFF
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+
+	if m.Modal.PushToRemote {
+		t.Errorf("expected PushToRemote false after Tab")
+	}
+
+	// Submit with Enter
+	m.Modal.Input.SetValue("Local commit only")
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(Model)
+
+	if m.Console.RunningTitle != "git add && commit" {
+		t.Errorf("expected RunningTitle 'git add && commit', got %q", m.Console.RunningTitle)
+	}
+
+	// Simulate commit finish
+	procMsg := runner.ProcessFinishedMsg{
+		Command:  "git add -A && git commit -m 'Local commit only'",
+		Output:   "[main abc1234] Local commit only\n",
+		ExitCode: 0,
+	}
+	newM, _ = m.Update(procMsg)
+	m = newM.(Model)
+
+	if !strings.Contains(m.StatusMessage, "committed locally") {
+		t.Errorf("expected 'committed locally' in status message, got %s", m.StatusMessage)
+	}
+}
+
+func TestAppGitSyncCtrlEnterForcesPush(t *testing.T) {
+	if !git.IsInstalled() {
+		t.Skip("git not installed")
+	}
+
+	repoDir := initTestGitRepoForApp(t)
+	defer os.RemoveAll(repoDir)
+
+	_ = os.WriteFile(filepath.Join(repoDir, "file.txt"), []byte("data"), 0644)
+
+	m := InitialModel(repoDir)
+	m.Width = 100
+	m.Height = 30
+	m.recalculateLayout()
+
+	// Open GitSync modal
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}, Alt: true})
+	m = newM.(Model)
+
+	// Press Tab to toggle push OFF
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = newM.(Model)
+
+	// Set value and press Ctrl+Enter / Alt+Enter
+	m.Modal.Input.SetValue("Push with Ctrl+Enter")
+	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	m = newM.(Model)
+
+	if m.Console.RunningTitle != "git add && commit && push" {
+		t.Errorf("expected RunningTitle 'git add && commit && push', got %q", m.Console.RunningTitle)
+	}
+}
+

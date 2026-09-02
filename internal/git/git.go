@@ -189,8 +189,16 @@ func GetStatus(dir string) RepoStatus {
 	}
 }
 
+// BuildCommitCmd constructs the shell command to add all changes and commit with message (optionally pushing to remote).
+func BuildCommitCmd(message string, push bool) string {
+	safeMsg := "'" + strings.ReplaceAll(message, "'", "'\\''") + "'"
+	if push {
+		return fmt.Sprintf("git add -A && git commit -m %s && git push", safeMsg)
+	}
+	return fmt.Sprintf("git add -A && git commit -m %s", safeMsg)
+}
+
 // BuildCommitAndPushCmd constructs the shell command to add all changes, commit with message, and push.
 func BuildCommitAndPushCmd(message string) string {
-	safeMsg := "'" + strings.ReplaceAll(message, "'", "'\\''") + "'"
-	return fmt.Sprintf("git add -A && git commit -m %s && git push", safeMsg)
+	return BuildCommitCmd(message, true)
 }
